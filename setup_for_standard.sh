@@ -29,4 +29,8 @@ apt-key adv --keyserver   keyserver.ubuntu.com --recv-keys 04EE7237B7D453EC
  
 apt update
 
-apt install wireguard
+apt install wireguard -y
+
+echo "Temporary reboot script" >> $DIR/wireguard_checkpoint.txt
+# Reboot and check if wireguard loaded at boot
+sudo shutdown -r now

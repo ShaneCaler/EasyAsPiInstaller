@@ -107,6 +107,7 @@ if [[ ! -f $DIR/wireguard_checkpoint.txt ]]; then
 	fi
 fi
 
+
 # Check that wireguard is installed
 sudo lsmod | grep wireguard
 if [ $? -eq 0 ]; then
