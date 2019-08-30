@@ -15,4 +15,12 @@
 
 
 
-Welcome text 
+
+
+Welcome to the Easy As Pi Installer! I'll take you through most
+of the required steps to set up WireGuard VPN, Pi-hole and/or Unbound.
+I'll ask a series of questions required to install everything, most of 
+which will already have the default answer pre-written. If in doubt, 
+check the GitHub Readme or just press enter! Please read all prompts
+carefully, as these installations can be quite finnicky at times. 
+HUGE thank you to all the resources that I've listed in the Readme!

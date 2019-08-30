@@ -87,17 +87,28 @@ pi_pub_ip6=$(ip -6 addr show dev $pi_intrfc | grep 'inet6*' | awk '{print $2}' |
 pi_pub_ip4=$(host -4 myip.opendns.com resolver1.opendns.com | grep "myip.opendns.com has" | awk '{print $4}')
 pi_gateway=$(ip r | grep default | awk '{print $3}')
 
+# Add variables to reboot_helper
+echo "pi_intrfc $pi_intrfc" >> $HOME/reboot_helper.txt 
+echo "pi_pub_ip4 $pi_pub_ip4" >> $HOME/reboot_helper.txt 
+echo "pi_gateway $pi_gateway" >> $HOME/reboot_helper.txt 
+
 echo "I have calculated your server's IPv4/IPv6 address, but you may change them now if they are incorrect for some reason.
 NOTE: This is different from the server's WireGuard address that we'll assign manually later. If everything looks OK, just hit 'enter'
 "
 read -rp "$(echo -e $t_readin"Replace with your server's IPv4 address and subnet (or just press enter): "$t_reset)" -e -i "$pi_prv_ip4" pi_prv_ip4
 echo " "
+# Grab ipv6_choice from reboot_helper
+ipv6_choice="$(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
 	echo "Since you chose to use IPv6, let's make sure that I have the right address for that as well."
 	read -rp "$(echo -e $t_readin"Replace with your public IPv6 address and subnet (or just press enter): "$t_reset)" -e -i "$pi_prv_ip6" pi_prv_ip6
 elif [[ "${ipv6_choice^^}" == "N" ]]; then
 	echo "Alright, moving on then!"
 fi
+# Add variables to reboot_helper
+echo "pi_prv_ip4 $pi_prv_ip4" >> $HOME/reboot_helper.txt 
+echo "pi_prv_ip6 $pi_prv_ip6" >> $HOME/reboot_helper.txt 
+
 echo "
 ---------------------------------------------------------------------------------------------------------------------------
 "
@@ -119,6 +130,12 @@ if [[ "${ipv6_choice^^}" == "Y" ]]; then
 	IFS='/' read -rp "$(echo -e $t_readin"Enter internal IPv6 address in the format given: "$t_reseet)" -e -i "1337:abcd:24::1/64" -a int_addr_temp
 	int_addr+=( ${int_addr_temp[@]} )
 fi
+# Add int_addr to reboot_helper 
+echo "int_addr[0] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
+echo "int_addr[1] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
+echo "int_addr[2] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
+echo "int_addr[3] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
+
 echo "
 ---------------------------------------------------------------------------------------------------------------------------
 "
@@ -130,6 +147,10 @@ You will need to forward this port in your router, search google for your router
 so if in doubt you can go with that, though I'd recommend otherwise to have stronger security.
 "
 read -rp "$(echo -e $t_readin"Enter your desired port here: "$t_reset)" -e -i "51820" listen_port
+
+# Add listen_port to reboot_helper
+echo "listen_port $listen_port" >> $HOME/reboot_helper.txt 
+
 echo "
 ---------------------------------------------------------------------------------------------------------------------------
 "
@@ -690,15 +711,15 @@ if [[ "${pihole_choice^^}" == "Y" && ! -f $DIR/pihole_checkpoint.txt ]]; then
 	echo "And then I'll run it against 'pagead2.googlesyndication.com' to verify that ads are being served"
 	echo "By the Pi-hole. You should see the custom IP that you set earlier next to 'has address'"
 	if [[ "{ipv6_choice^^}" == "Y" ]]; then
-		echo $t_bold"Running '# host $HOSTNAME ${int_addr[0]}"$t_reset
+		echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[0]}"$t_reset
 		host $HOSTNAME ${int_addr[0]}
-		echo $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
+		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
 		host pagead2.googlesyndication.com ${int_addr[0]}
 		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
 	else
-		echo $t_bold"Running '# host $HOSTNAME ${int_addr[2]}"$t_reset
+		echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[2]}"$t_reset
 		host $HOSTNAME ${int_addr[2]}
-		echo $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
+		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
 		host pagead2.googlesyndication.com ${int_addr[2]}
 		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
 fi
@@ -706,52 +727,55 @@ if [[ "${unb_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt]]; then
 	install_unbound
 fi
 
-if [[ "${unb_choice^^}" == "N" && -f $DIR/pihole_checkpoint.txt ]]; then
-	# Done, with no unbound
-elif [[ "${pihole_choice^^}" == "Y" && -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
-	# Done, with pihole and unbound installed
-	echo "Done! Now I'll start Unbound and use the 'dig pi-hole.net @127.0.0.1 -p 5353'"
-	echo "command to check if it's working. I'll run this three times with different options. "
-	echo "For the first, the 'status' parameter should be equal to 'NOERROR'. This verifies that DNS is working."
-	echo "I'll wait for your input at the end so you can have time to review the results."
-	sleep 3
-	sudo service unbound start
-	# need timeout?
-	dig pi-hole.net @127.0.0.1 -p 5353
-	sleep 2
-	echo "Now, this next test should show 'SERVFAIL' for the 'status' parameter."
-	echo "This verifies that DNSSEC is established, as we are running the dig command"
-	echo "against 'sigfail.verteiltesysteme.net' which replicates a website that has a failed signature."
-	echo "Note: This method of DNSSEC test validation is provided by: https://dnssec.vs.uni-due.de"
-	sleep 3
-	dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5353
-	sleep 2
-	echo "Finally, just to make sure that everything's working, we'll run dig against "
-	echo "the domain 'sigok.verteiltesysteme.net', which as you can guess should return"
-	echo "the status value of 'NOERROR'"
-	sleep 3
-	dig sigok.verteiltesysteme.net @127.0.0.1 -p 5353
-	sleep 2
-	read -rp "Press enter whenever you are ready to move forward: " -e -i "" move_forward_choice
-	sleep 1
-	echo "Okay, there's one last thing you need to do before Unbound is good-to-go, and unfortunately,"
-	echo "you're on your own with this one! You'll need to open up a web browser on your phone or another device"
-	echo "and visit your Pi-hole admin dashboard that you created in the Pi-hole installation process."
-	echo "From what I can tell, it should be http://"${int_addr[0]}"/admin for IPv4,"
-	echo "or http://"${int_addr[2]}"/admin for IPv6, but if you changed it to something else then use that!"
-	echo "Once logged in, click the 'Settings' button on the left and then navigate to the 'DNS' tab on that page."
-	echo "You'll see two sections labeled 'Upstream DNS Servers', don't touch any of them other than the field that "
-	echo "is labeled 'Custom 1' for IPv4 users or both 'Custom 1' and 'Custom 3' for IPv6 users. In 'Custom 1', "
-	echo "Enter '127.0.0.1#5353' and if you're using IPv6 then also enter '::1#5353' into 'Custom 3'."
-	echo "Finally, underneath the box that you just edited there is a section labeled 'Interface Listening Behavior.'"
-	echo "Set this to only listen to the wireguard interface, in your case: $wg_intrfc"
-elif [[ "${pihole_choice^^}" == "N" ]]; then
-	# Done, with no pihole or unbound
-else
-	# Done - not sure what happened here?
-fi
+# Leave configure_wireguard and create checkpoint.
+echo "" > $DIR/wg_config_checkpoint.txt
 
-# Delete auto-start entry
-#sudo sh -c "sed -i '/wireguard/d' /etc/profile"
-sudo sh -c "sed -i '/EasyAsPiInstaller.sh/d' /etc/profile"
+# if [[ ! -f $DIR/unbound_checkpoint.txt && -f $DIR/pihole_checkpoint.txt ]]; then
+	# # Done, with no unbound
+# elif [[ -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
+	# # Done, with pihole and unbound installed
+	# echo "Done! Now I'll start Unbound and use the 'dig pi-hole.net @127.0.0.1 -p 5353'"
+	# echo "command to check if it's working. I'll run this three times with different options. "
+	# echo "For the first, the 'status' parameter should be equal to 'NOERROR'. This verifies that DNS is working."
+	# echo "I'll wait for your input at the end so you can have time to review the results."
+	# sleep 3
+	# sudo service unbound start
+	# # need timeout?
+	# dig pi-hole.net @127.0.0.1 -p 5353
+	# sleep 2
+	# echo "Now, this next test should show 'SERVFAIL' for the 'status' parameter."
+	# echo "This verifies that DNSSEC is established, as we are running the dig command"
+	# echo "against 'sigfail.verteiltesysteme.net' which replicates a website that has a failed signature."
+	# echo "Note: This method of DNSSEC test validation is provided by: https://dnssec.vs.uni-due.de"
+	# sleep 3
+	# dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5353
+	# sleep 2
+	# echo "Finally, just to make sure that everything's working, we'll run dig against "
+	# echo "the domain 'sigok.verteiltesysteme.net', which as you can guess should return"
+	# echo "the status value of 'NOERROR'"
+	# sleep 3
+	# dig sigok.verteiltesysteme.net @127.0.0.1 -p 5353
+	# sleep 2
+	# read -rp "Press enter whenever you are ready to move forward: " -e -i "" move_forward_choice
+	# sleep 1
+	# echo "Okay, there's one last thing you need to do before Unbound is good-to-go, and unfortunately,"
+	# echo "you're on your own with this one! You'll need to open up a web browser on your phone or another device"
+	# echo "and visit your Pi-hole admin dashboard that you created in the Pi-hole installation process."
+	# echo "From what I can tell, it should be http://"${int_addr[0]}"/admin for IPv4,"
+	# echo "or http://"${int_addr[2]}"/admin for IPv6, but if you changed it to something else then use that!"
+	# echo "Once logged in, click the 'Settings' button on the left and then navigate to the 'DNS' tab on that page."
+	# echo "You'll see two sections labeled 'Upstream DNS Servers', don't touch any of them other than the field that "
+	# echo "is labeled 'Custom 1' for IPv4 users or both 'Custom 1' and 'Custom 3' for IPv6 users. In 'Custom 1', "
+	# echo "Enter '127.0.0.1#5353' and if you're using IPv6 then also enter '::1#5353' into 'Custom 3'."
+	# echo "Finally, underneath the box that you just edited there is a section labeled 'Interface Listening Behavior.'"
+	# echo "Set this to only listen to the wireguard interface, in your case: $wg_intrfc"
+# elif [[ "${pihole_choice^^}" == "N" ]]; then
+	# # Done, with no pihole or unbound
+# else
+	# # Done - not sure what happened here?
+# fi
+
+# # Delete auto-start entry
+# #sudo sh -c "sed -i '/wireguard/d' /etc/profile"
+# sudo sh -c "sed -i '/EasyAsPiInstaller.sh/d' /etc/profile"
 

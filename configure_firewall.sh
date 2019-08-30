@@ -3,14 +3,23 @@
 # $4 = ipv6_choice 
 # $5 = wireguard subnet(int_addr[1] or int_addr[4])
 # Check what phase we are in:
+
+# Grab variables from reboot_helper
+if [[ -f $HOME/reboot_helper.txt ]]; then
+	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
+	pi_intrfc="$(awk '/pi_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
+	listen_port="$(awk '/listen_port/{print $NF}' $HOME/reboot_helper.txt)"
+	modded_ip="$(awk '/modded_ip/{print $NF}' $HOME/reboot_helper.txt)"
+fi
+
 if [[ $1 == "phase1" ]]; then
 	# Pre-configuration of firewall settings
 	
 	# Ask to use iptables or nftables
-	echo "Would you like to upgrade your firewall from iptables (legacy) to the newer nftables?
-	$t_important"DISCLAIMER: Upgrade at your own risk!!"$t_reset I $t_bold"-highly-"$t_reset recommend reviewing this script's code
-	and adjusting as needed. I'm still learning firewall rules, so the following settings have
-	been gathered from various resources (which I will list in the Github readme file)."
+	echo "Would you like to upgrade your firewall from iptables (legacy) to the newer nftables?"
+	echo -e "$t_important"DISCLAIMER: Upgrade at your own risk!!"$t_reset I $t_bold"-highly-"$t_reset recommend reviewing"
+	echo "this script's code and adjusting as needed. I'm still learning firewall rules, so the following settings have"
+	echo "been gathered from various resources (which I will list in the Github readme file)."
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" table_choice
 	if [[ "${table_choice^^}" == "Y" ]]; then
 		sudo aptitude install nftables -y
@@ -30,14 +39,19 @@ if [[ $1 == "phase1" ]]; then
 			exit 1
 	fi
 
-	# Enable IPv4 and IPv6 forwarding and avoid rebooting
-	echo "
-	----------------------------------------------------------------------------------------------------------------------------
-	Would you like to use IPv6? If you don't know what that is or how it works, then
-	A. Look it up! and B. just enter 'N' for now.
-	"
-	read -rp "$(echo -e $t_readin"Enter Y for yes, N for no (Only choose 'Y' if you know what you are doing!): "$t_reset)" -e -i "N" ipv6_choice
+	# Enable IPv4 (and IPv6) forwarding and avoid rebooting
 	sudo perl -pi -e 's/#{1,}?net.ipv4.ip_forward ?= ?(0|1)/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf
+
+	echo ""
+	echo "----------------------------------------------------------------------------------------------------------------------------"
+	echo "Would you like to use IPv6? If you don't know what that is or how it works, then"
+	echo "A. Look it up! and B. just enter 'N' for now."
+	echo ""
+	read -rp "$(echo -e $t_readin"Enter Y for yes, N for no (Only choose 'Y' if you know what you are doing!): "$t_reset)" -e -i "N" ipv6_choice
+	
+	# Add ipv6_choice to reboot_helper
+	echo "ipv6_choice $ipv6_choice" >> $HOME/reboot_helper.txt 
+	
 	if [[ "{$ipv6_choice^^}" == "Y" ]]; then
 			sudo perl -pi -e 's/#{1,}?net.ipv6.conf.all.forwarding ?= ?(0|1)/net.ipv6.conf.all.forwarding = 1/g' /etc/sysctl.conf
 	elif [[ "{$ipv6_choice^^}" == "N" ]]; then
@@ -46,12 +60,20 @@ if [[ $1 == "phase1" ]]; then
 			echo "You must type Y or N to continue, please start over"
 			exit 1
 	fi
+	
+	# Enable without rebooting
+	sudo sysctl -p
+	sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+	if [[ "${ipv6_choice^^}" == "Y" ]]; then
+		sudo sh -c "echo 1 > /proc/sys/net/ipv6/conf/all/forwarding"
+	fi
+	
 	# Done, create firewall checkpoint for phase 1
 	echo "" > $DIR/firewall_checkpoint_p1.txt
 else
 	# Post-configuration of firewall settings	
-	echo "If you changed the default port that Pi-hole uses (53), then "
-	read -rp "Please enter it here (or just press enter): " -e -i "53" dns_port
+	echo "If you changed the default port that Pi-hole uses (53), then"
+	read -rp "$(echo -e $t_readin"Please enter it here (or just press enter): "$t_reset)" -e -i "53" dns_port
 	# Set up iptables rules
 		# Check if user needs NAT configured
 		if [[ "${pka_choice^^}" == "Y" ]]; then
@@ -120,8 +142,7 @@ else
 			sleep 4
 		fi
 	fi
-
+	
+	# Done, create firewall checkpoint for phase 2
+	echo "" > $DIR/firewall_checkpoint_p2.txt
 fi
-
-# Done, create firewall checkpoint for phase 2
-echo "" > $DIR/firewall_checkpoint_p2.txt
