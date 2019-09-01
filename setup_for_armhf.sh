@@ -2,7 +2,9 @@
 # Install WireGuard for armhf devices
 
 # Install everything needed for WireGuard
-echo "$t_important"IMPORTANT:"$t_reset As mentioned before, your device will reboot once this script finishes, 
+echo ""
+sleep 3
+echo -e "$t_important"IMPORTANT:"$t_reset As mentioned before, your device will reboot once this script finishes, 
 please make sure that you have 'autologin' set using the command 'sudo raspi-config'
 and navigating to 'boot options'. You can change it back after everything is done!"
 read -rp "$(echo -e $t_readin"Would you like to exit to change this setting? Y for yes, N for no: "$t_reset)" -e -i "N" exit_choice
@@ -15,27 +17,69 @@ echo "Okay, I'm about to install WireGuard for your armhf device. After you pres
 first install several necessary packages, run an update & upgrade, clone the WireGuard repo,
 run the commands 'make', 'make install' and 'sudo modprobe WireGuard' and finally reboot the device."
 echo -e "$t_bold"NOTE:"$t_reset This will take a while, especially loading the kernel headers and running
-the 'make' command. I will show a prompt for you once everything is finished and then I'll reboot."
+the 'make' command. So go grab a coffee and I will show a prompt for you once everything is finished!"
 read -rp "$(echo -e $t_readin"Good to go? Let's do this then. Press enter whenever you're ready: "$t_reset)" -e -i "" move_fwd
 
 sudo apt-get install raspberrypi-kernel-headers libmnl-dev libelf-dev build-essential dkms -y
+echo "
+------------------------------------------------------------------------------------------------------------
+"
 sudo apt-get update -y && sudo apt-get upgrade -y
 #sudo reboot - not needed yet?
-
+echo "
+------------------------------------------------------------------------------------------------------------
+"
 # Clone & Compile
 cd $HOME
 git clone https://git.zx2c4.com/WireGuard
 cd $HOME/WireGuard/src
-make
-sudo make install
+echo "
+Executing 'make'
+------------------------------------------------------------------------------------------------------------
+"
+
+sudo sh -c "make V=1"
+
+echo "
+Executing 'make check'
+------------------------------------------------------------------------------------------------------------
+"
+
+sudo sh -c "make check"
+
+echo "
+Executing 'make install'
+------------------------------------------------------------------------------------------------------------
+"
+
+sudo sh -c "make install V=1"
+
+echo "
+Executing 'make installcheck'
+------------------------------------------------------------------------------------------------------------
+"
+
+sudo sh -c "make installcheck"
 
 # With the lower-end models we need to manually setup kernel module and loading on boot
-sudo modprobe wireguard
-echo "wireguard" >> /etc/modules-load.d/wireguard.conf
+sudo sh -c "modinfo wireguard"
+#if [[ $? -eq 1 ]]; then
+sudo sh -c "depmod -a"
+sudo sh -c "modprobe wireguard"
+#fi
+
+sudo sh -c "echo 'wireguard' >> /etc/modules-load.d/wireguard.conf"
+
+echo "
+------------------------------------------------------------------------------------------------------------
+"
 
 echo "Alright, we're (hopefully) done! Once you're ready, I'll run the command 'sudo lsmod | grep wireguard' 
 before and after rebooting to test if all went well. You should see some output on both along with an error/success message.
-Remember, if you're running this installer from SSH, you'll need to manually restart the script after reestablishing connection."
+Remember, if you're running this installer from SSH, you'll need to manually restart the script after reestablishing connection.
+
+------------------------------------------------------------------------------------------------------------
+"
 sleep 3
 
 # Check that wireguard is installed

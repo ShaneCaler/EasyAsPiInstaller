@@ -52,9 +52,9 @@ if [[ $1 == "phase1" ]]; then
 	# Add ipv6_choice to reboot_helper
 	echo "ipv6_choice $ipv6_choice" >> $HOME/reboot_helper.txt 
 	
-	if [[ "{$ipv6_choice^^}" == "Y" ]]; then
+	if [[ "${ipv6_choice^^}" == "Y" ]]; then
 			sudo perl -pi -e 's/#{1,}?net.ipv6.conf.all.forwarding ?= ?(0|1)/net.ipv6.conf.all.forwarding = 1/g' /etc/sysctl.conf
-	elif [[ "{$ipv6_choice^^}" == "N" ]]; then
+	elif [[ "${ipv6_choice^^}" == "N" ]]; then
 		echo "Okay, moving on then..."
 	else
 			echo "You must type Y or N to continue, please start over"

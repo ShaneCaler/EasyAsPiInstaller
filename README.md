@@ -1,4 +1,4 @@
-# EasyAsPiInstaller
+# Easy As Pi Installer
 A one-stop-shop to set up WireGuard, Pi-Hole and Unbound for all versions of Raspberry Pi (armhf included!)
 
 ## Here's what you need to do first:
@@ -12,16 +12,18 @@ script after typing 'sudo su' or let the script manually run the commands for yo
 it will require you to enter it during the steps that require elevated permission. 
 The script will ask if you want to run 'sudo --validate' to temporarily disable (for 15 minutes) the need for a password.
 3. Install git so you can clone this repo
+
 `sudo apt-get install git -y`
+
 4. Clone this repo and move into the newly made directory
 ```
-git clone https://github.com/ShaneCaler/EasyAsPiInstaller.git
-cd EasyAsPiInstaller
+cd $HOME && git clone https://github.com/ShaneCaler/EasyAsPiInstaller.git && cd EasyAsPiInstaller
 ```
 5. Run the installer! Type the following below and just follow all of the prompts.
 There will be a lot, but that's just because I wanted to offer the ability to customize your setup.
 If you have any issues, refer back to here in the troubleshooting section or open up an issue and I'll
 try to help out!
+
 `./EasyAsPiInstaller.sh`
 
 ## Resources/References:

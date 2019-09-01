@@ -1,4 +1,4 @@
-#!bin/bash
+#!/bin/bash
 # Run this script as sudo? Passworldless sudo not an option
 # MAKE SURE TO ENABLE AUTOLOGIN IN RASPI-CONFIG
 
@@ -31,16 +31,19 @@ before_first_reboot(){
 	sleep 3
 
 	# Make sure user has autologin set through raspi-config
+	echo "
+	------------------------------------------------------------------------------------------------------------
+	"
 	echo -e $t_important"IMPORTANT: Your device will need to reboot during the course of this installation."$t_reset
 	echo -e "$t_bold"Please"$t_reset make sure that you have 'autologin' set using the command 'sudo raspi-config'
-	and navigating to 'boot options' -> 'Desktop / CLI' -> 'B2 Console Autologin'. 
-	This is very important for the script to function properly (since we'll be installing new kernel headers)!
-	Enabling this setting will allow the script to continue where it left off after rebooting.
-	You can immediately change it back after everything is done!"
+and navigating to 'boot options' -> 'Desktop / CLI' -> 'B2 Console Autologin'. 
+This is very important for the script to function properly (since we'll be installing new kernel headers)!
+Enabling this setting will allow the script to continue where it left off after rebooting.
+You can immediately change it back after everything is done!"
 	# Also check for SSH, as auto-start won't be possible
 	echo -e "$t_bold"NOTE:"$t_reset if you are using SSH, you will need to manually restart the script after rebooting,
-	since you won't have access to the same terminal afterwards. After rebooting, type 'cd EasyAsPiInstaller' and
-	'./EasyAsPiInstaller.sh' and you should pick up where you left off."
+since you won't have access to the same terminal afterwards. After rebooting, type 'cd EasyAsPiInstaller' and
+'./EasyAsPiInstaller.sh' and you should pick up where you left off."
 	echo "So, are you using SSH?"
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" ssh_check
 	if [[ "${ssh_check^^}" == "Y" ]]; then
@@ -50,7 +53,7 @@ before_first_reboot(){
 		# We will need to reboot several times, this lets us restart the script after autologin
 		# The entries are removed once the script finishes
 		sudo sh -c "echo 'cd $DIR' >> /etc/profile"
-		sudo sh -c "echo '. /$DIR/WireGuardEasyInstaller.sh' >> /etc/profile"
+		sudo sh -c "echo '. $DIR/EasyAsPiInstaller.sh' >> /etc/profile"
 	fi
 	echo ""
 	echo "Would you like to exit to set autologin through raspi-config?"
@@ -81,11 +84,11 @@ before_first_reboot(){
 	sleep 1
 	echo -e $t_important"IMPORTANT: This script uses the 'sudo' command to run some commands as SuperUser."$t_reset
 	echo -e "If you have a password set for sudo, you will need to enter it for each step that requires it.
-	You can either: A. Re-run this script with 'sudo', B. Temporarily disable/remove your password,
-	or C. I can run the command 'sudo --validate' which will extend the sudo timeout for 15 minutes."
+You can either: A. Re-run this script with 'sudo', B. Temporarily disable/remove your password,
+or C. I can run the command 'sudo --validate' which will extend the sudo timeout for 15 minutes."
 	sleep 2
 	echo "------------------------------------------------------------------------------------------------------------
-	Would you like to exit this script and do either A or B yourself? If not, I'll run 'sudo --validate' for you"
+Would you like to exit this script and do either A or B yourself? If not, I'll run 'sudo --validate' for you"
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" su_choice
 	if [[ "${su_choice^^}" == "Y" ]]; then
 		echo "Okay, please either: Re-run this script as sudo OR temporarily remove/disable your password and re-run"
@@ -115,11 +118,16 @@ before_first_reboot(){
 	pi_arch=$(dpkg --print-architecture)
 	if [[ ! -f $DIR/wg_install_checkpoint.txt ]]; then
 		if [[ "$pi_arch" == "armhf" ]]; then
-			echo "armhf found"
+			echo "Alright, looks like you have a device that runs on the ARMv7 or below architecture,"
+			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
+			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
 			pi_type=1
 			# Call setup_for_armhf script
 			. "$DIR/setup_for_armhf.sh"
 		else
+			echo "Alright, looks like you have a device that runs on the ARMv8+ architecture,"
+			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
+			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
 			pi_type=0
 			# Call setup for v1.2 and above script
 			. "$DIR/setup_for_standard.sh"
@@ -133,7 +141,11 @@ after_first_reboot(){
 	if [ $? -eq 0 ]; then
 		echo "Looking good!"
 	else
-		printf "Something went wrong, wireguard isn't loading after rebooting.\nBefore troubleshooting online, try editing the file /etc/mkinicpio.conf and searching for the\nline that reads "MODULES=(...)" Make sure it is uncommented and add "wireguard" to the list (no quotes),\nwhich is seperated by spaces if there are already entries. Thanks to Juhzuri from Reddit for the tip! \n"
+		echo "Something went wrong, wireguard isn't loading after rebooting."
+		echo "Before troubleshooting online, try editing the file /etc/mkinicpio.conf and searching "
+		echo "for the line that reads 'MODULES=(...)'. Make sure it is uncommented and add 'wireguard'" 
+		echo "to the list (no quotes), which is seperated by spaces if there are already entries. "
+		echo "Thanks to Juhzuri from Reddit for the tip!"
 		exit 1
 	fi
 
@@ -157,9 +169,7 @@ after_wireguard_configuration(){
 	int_addr[2]="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[3]="$(awk '/int_addr[3]/{print $NF}' $HOME/reboot_helper.txt)"
 
-	if [[ ! -f $DIR/unbound_checkpoint.txt && -f $DIR/pihole_checkpoint.txt ]]; then
-		# Done, with no unbound
-	elif [[ -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
+	if [[ -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
 		# Done, with pihole and unbound installed
 		echo "Done! Now I'll start Unbound and use the 'dig pi-hole.net @127.0.0.1 -p 5353'"
 		echo "command to check if it's working. I'll run this three times with different options. "
@@ -229,7 +239,7 @@ if [[ ! -f $HOME/reboot_helper.txt ]]; then
 	DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 	echo "$DIR" >> $HOME/reboot_helper.txt
 	before_first_reboot
-elif [[ -f $HOME/reboot_helper.txt ]]
+elif [[ -f $HOME/reboot_helper.txt ]]; then
 	# Not the first run, grab previously stored DIR and cd into it
 	read -r DIR < $HOME/reboot_helper.txt
 	cd $DIR
@@ -242,5 +252,3 @@ elif [[ -f $HOME/reboot_helper.txt ]]
 		echo "Something went wrong and I'm not sure where to start. Exiting."
 	fi			
 fi
-
-
