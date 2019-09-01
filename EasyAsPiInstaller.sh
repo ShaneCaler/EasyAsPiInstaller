@@ -28,22 +28,27 @@ error_msg="You must enter Y for yes or N for no. Exiting."
 before_first_reboot(){
 	# Display welcome ascii graphic and text
 	cat $DIR/welcome_text.txt
-	sleep 3
+	sleep 5
 
 	# Make sure user has autologin set through raspi-config
 	echo "
 	------------------------------------------------------------------------------------------------------------
+	
+	
 	"
 	echo -e $t_important"IMPORTANT: Your device will need to reboot during the course of this installation."$t_reset
+	echo ""
 	echo -e "$t_bold"Please"$t_reset make sure that you have 'autologin' set using the command 'sudo raspi-config'
 and navigating to 'boot options' -> 'Desktop / CLI' -> 'B2 Console Autologin'. 
 This is very important for the script to function properly (since we'll be installing new kernel headers)!
 Enabling this setting will allow the script to continue where it left off after rebooting.
 You can immediately change it back after everything is done!"
+	echo ""
 	# Also check for SSH, as auto-start won't be possible
 	echo -e "$t_bold"NOTE:"$t_reset if you are using SSH, you will need to manually restart the script after rebooting,
 since you won't have access to the same terminal afterwards. After rebooting, type 'cd EasyAsPiInstaller' and
 './EasyAsPiInstaller.sh' and you should pick up where you left off."
+	echo ""
 	echo "So, are you using SSH?"
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" ssh_check
 	if [[ "${ssh_check^^}" == "Y" ]]; then
@@ -116,7 +121,7 @@ Would you like to exit this script and do either A or B yourself? If not, I'll r
 	# Continue with server and first client setup
 	# Check architecture and run WireGuard installer
 	pi_arch=$(dpkg --print-architecture)
-	if [[ ! -f $DIR/wg_install_checkpoint.txt ]]; then
+	if [[ ! -f $DIR/wg_install_checkpoint2.txt ]]; then
 		if [[ "$pi_arch" == "armhf" ]]; then
 			echo "Alright, looks like you have a device that runs on the ARMv7 or below architecture,"
 			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
@@ -222,7 +227,7 @@ after_wireguard_configuration(){
 
 	# Remove reboot files
 	cd $DIR
-	rm wg_install_checkpoint.txt wg_config_checkpoint.txt pihole_checkpoint.txt unbound_checkpoint.txt firewall_checkpoint_p1.txt firewall_checkpoint_p2.txt
+	rm wg_install_checkpoint1.txt wg_install_checkpoint2.txt wg_config_checkpoint.txt pihole_checkpoint.txt unbound_checkpoint.txt firewall_checkpoint_p1.txt firewall_checkpoint_p2.txt
 	sudo sh -c "sed -i '/EasyAsPiInstaller.sh/d' /etc/profile"
 	sudo sh -c "sed -i '/EasyAsPiInstaller/d' /etc/profile"
 
