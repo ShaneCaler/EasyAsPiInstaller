@@ -25,6 +25,29 @@ t_readin="\e[1;93m"
 prompt="Press Y for yes or N for no: "
 error_msg="You must enter Y for yes or N for no. Exiting."
 	
+	
+find_arch_and_install(){
+	# Check architecture and run WireGuard installer
+	pi_arch=$(dpkg --print-architecture)
+	if [[ ! -f $DIR/wg_install_checkpoint2.txt ]]; then
+		if [[ "$pi_arch" == "armhf" ]]; then
+			echo "Alright, looks like you have a device that runs on the ARMv7 or below architecture,"
+			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
+			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
+			pi_type=1
+			# Call setup_for_armhf script
+			. "$DIR/setup_for_armhf.sh"
+		else
+			echo "Alright, looks like you have a device that runs on the ARMv8+ architecture,"
+			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
+			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
+			pi_type=0
+			# Call setup for v1.2 and above script
+			. "$DIR/setup_for_standard.sh"
+		fi
+	fi
+}	
+	
 before_first_reboot(){
 	# Display welcome ascii graphic and text
 	cat $DIR/welcome_text.txt
@@ -116,28 +139,9 @@ Would you like to exit this script and do either A or B yourself? If not, I'll r
 		echo "$error_msg"
 		exit 1
 	fi
-
-
-	# Continue with server and first client setup
-	# Check architecture and run WireGuard installer
-	pi_arch=$(dpkg --print-architecture)
-	if [[ ! -f $DIR/wg_install_checkpoint2.txt ]]; then
-		if [[ "$pi_arch" == "armhf" ]]; then
-			echo "Alright, looks like you have a device that runs on the ARMv7 or below architecture,"
-			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
-			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
-			pi_type=1
-			# Call setup_for_armhf script
-			. "$DIR/setup_for_armhf.sh"
-		else
-			echo "Alright, looks like you have a device that runs on the ARMv8+ architecture,"
-			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
-			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
-			pi_type=0
-			# Call setup for v1.2 and above script
-			. "$DIR/setup_for_standard.sh"
-		fi
-	fi
+	
+	find_arch_and_install
+	
 } # END before_first_reboot
 
 after_first_reboot(){
@@ -249,11 +253,13 @@ elif [[ -f $HOME/reboot_helper.txt ]]; then
 	read -r DIR < $HOME/reboot_helper.txt
 	cd $DIR
 	# Find what checkpoint we are at
-	if [[ ! -f $DIR/firewall_checkpoint_p2.txt && -f $DIR/wg_install_checkpoint.txt ]]; then
+	if [[ -f $DIR/wg_install_checkpoint1.txt && ! -f $DIR/wg_install_checkpoint2.txt ]]; then
+		find_arch_and_install
+	elif [[ ! -f $DIR/firewall_checkpoint_p2.txt && -f $DIR/wg_install_checkpoint.txt ]]; then
 		after_first_reboot
 	elif [[ -f $DIR/wg_config_checkpoint.txt && "$test" != "SERVERCOMPLETE" ]]; then
 		after_wireguard_configuration
-	else
-		echo "Something went wrong and I'm not sure where to start. Exiting."
-	fi			
+	fi
+else
+	echo "Something went wrong and I'm not sure where to start. Exiting."			
 fi

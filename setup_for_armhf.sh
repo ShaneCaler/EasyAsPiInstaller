@@ -21,7 +21,7 @@ run the commands 'make', 'make install' and 'sudo modprobe WireGuard' and finall
 the 'make' command. So go grab a coffee and I will show a prompt for you once everything is finished!"
 	read -rp "$(echo -e $t_readin"Good to go? Let's do this then. Press enter whenever you're ready: "$t_reset)" -e -i "" move_fwd
 
-	sudo apt-get install raspberrypi-kernel-headers libmnl-dev libelf-dev build-essential dkms -y
+	sudo apt-get install raspberrypi-kernel-headers libmnl-dev libelf-dev build-essential dkms pkg-config xz-utils -y
 	echo "
 ------------------------------------------------------------------------------------------------------------
 	"
@@ -36,21 +36,23 @@ after_reboot() {
 	"
 	# Clone & Compile
 	cd $HOME
-	git clone https://git.zx2c4.com/WireGuard
+	#git clone https://git.zx2c4.com/WireGuard
+	wget https://git.zx2c4.com/WireGuard/snapshot/WireGuard-0.0.20190702.tar.xz
+	tar -xf WireGuard-0.0.20190702.tar.xz
 	cd $HOME/WireGuard/src
 	echo "
 Executing 'make'
 ------------------------------------------------------------------------------------------------------------
 	"
 
-	sudo sh -c "make"
+make debug
 
 	echo "
 Executing 'make check'
 ------------------------------------------------------------------------------------------------------------
 	"
 
-	sudo sh -c "make check"
+make check
 
 	echo "
 Executing 'make install'
@@ -87,6 +89,8 @@ Remember, if you're running this installer from SSH, you'll need to manually res
 	"
 	sleep 3
 
+	sudo sh -c "ip link add dev wg0 type wireguard"
+	
 	# Check that wireguard is installed
 	sudo lsmod | grep wireguard
 	if [ $? -eq 0 ]; then
@@ -107,7 +111,7 @@ Remember, if you're running this installer from SSH, you'll need to manually res
 	sudo shutdown -r now
 }
 
-if [[ ! -f $DIR/wg_install_checkpoint1 ]]; then
+if [[ ! -f $DIR/wg_install_checkpoint1.txt ]]; then
 	before_reboot
 else
 	after_reboot
