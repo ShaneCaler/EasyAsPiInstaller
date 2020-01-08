@@ -17,14 +17,14 @@ The script will ask if you want to run 'sudo --validate' to temporarily disable 
 
 4. Clone this repo and move into the newly made directory
 ```
-cd $HOME && git clone https://github.com/ShaneCaler/EasyAsPiInstaller.git && cd EasyAsPiInstaller
+cd $HOME && git clone https://github.com/ShaneCaler/EasyAsPiInstaller.git && cd EasyAsPiInstaller && sudo chmod +x EasyAsPi.sh
 ```
 5. Run the installer! Type the following below and just follow all of the prompts.
 There will be a lot, but that's just because I wanted to offer the ability to customize your setup.
 If you have any issues, refer back to here in the troubleshooting section or open up an issue and I'll
 try to help out!
 
-`./EasyAsPiInstaller.sh`
+`./EasyAsPi.sh`
 
 ## Resources/References:
 

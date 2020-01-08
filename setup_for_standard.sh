@@ -1,10 +1,7 @@
 #!/bin/bash
 
 before_reboot(){
-	echo "Thank you to those listed in the resources section for the setup commands for Pi's not using ARMv7+
-I only own a Zero W at the moment so I am unable to test this part of the script
-Please let me know if you notice any issues."
-
+	echo "$divider_line"
 	echo -e "$t_important"IMPORTANT:"$t_reset As mentioned before, your device will reboot once this script finishes, 
 please make sure that you have 'autologin' set using the command 'sudo raspi-config'
 and navigating to 'boot options'. You can change it back after everything is done!"
@@ -13,7 +10,9 @@ and navigating to 'boot options'. You can change it back after everything is don
 		echo "Okay, just rerun the script and make your way back here!"
 		exit
 	fi
-
+	
+	echo "$divider_line"
+	
 	echo -e "$t_bold"NOTE:"$t_reset This will take a while, especially loading the kernel headers. 
 	I will show a prompt for you once everything is finished and then I'll reboot."
 	read -rp "$(echo -e $t_readin"Good to go? Let's do this then. Press enter whenever you're ready: "$t_reset)" -e -i "" move_fwd
@@ -41,14 +40,17 @@ after_reboot() {
 
 	sudo apt install dirmngr
 
-	sudo apt-key adv --keyserver   keyserver.ubuntu.com --recv-keys 7638D0442B90D010
+	sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8B48AD6246925553
 
-	sudo apt-key adv --keyserver   keyserver.ubuntu.com --recv-keys 04EE7237B7D453EC
-	 
+	sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7638D0442B90D010
+	
+	sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 04EE7237B7D453EC
+	
 	sudo apt update -y
 
 	sudo apt install wireguard -y
-
+	
+	echo "$divider_line"
 	echo "Alright, we're (hopefully) done! Once you're ready, I'll run the command 'sudo lsmod | grep wireguard' 
 before and after rebooting to test if all went well. You should see some output on both along with an error/success message.
 Remember, if you're running this installer from SSH, you'll need to manually restart the script after reestablishing connection."
@@ -65,7 +67,8 @@ Remember, if you're running this installer from SSH, you'll need to manually res
 		echo "did not return succesful. I recommend scrolling up and checking if any part of the installation produced "
 		echo "error messages and try troubleshooting online or with the GitHub readme. Once you can get that command to produce"
 		echo "output, then you can continue with this installer. See you soon!"
-		exit 1
+		sleep 15 # temporary
+		#exit 1
 	fi
 
 	read -rp "$(echo -e $t_readin"Alright, ready to restart? Just press enter! "$t_reset)" -e -i "" move_fwd
@@ -77,8 +80,6 @@ Remember, if you're running this installer from SSH, you'll need to manually res
 
 if [[ ! -f $DIR/wg_install_checkpoint1.txt ]]; then
 	before_reboot
-elif [[ -f $DIR/wg_install_checkpoint1.txt && ! -f $DIR/wg_install_checkpoint2.txt ]]; then
-	ff
 else
 	after_reboot
 fi

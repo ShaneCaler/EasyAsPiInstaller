@@ -1,9 +1,8 @@
 #!/bin/bash
 
-echo "
------------------------------------------------------------------------------------------
+echo "$divider_line
 Alright, first things first: Would you like to install pi-hole after we set up WireGuard?
-According to the developers, 'the Pi-holeÂis a DNS sinkhole that protects your
+According to the developers, 'the Pi-hole is a DNS sinkhole that protects your
 devices from unwanted content, without installing any client-side software.'"
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" pihole_choice
 if [[ "${pihole_choice^^}" == "Y" ]]; then
@@ -18,9 +17,7 @@ if [[ "${pihole_choice^^}" == "Y" ]]; then
 	echo "Awesome, I'll keep that in mind for later!"
 fi
 
-echo "
-----------------------------------------------------------------------------------------
-"
+echo "$divider_line"
 
 # Temporarily change permissions to create keys (/etc/wireguard will be changed to 700 once the script finishes)
 if [[ ! -d /etc/wireguard ]]; then
@@ -31,8 +28,7 @@ cd /etc/wireguard
 umask 077
 
 # Ask if we should create an optional preshared key for extra security
-echo "
-Alright, now it's time to generate your private and public keys for both
+echo "Alright, now it's time to generate your private and public keys for both
 your server (the machine you're running now) and your first client. I'll take care of them for now,
 but for future reference, they will be stored in: /etc/wireguard/ along with your server & client configuration files.
 
@@ -46,9 +42,9 @@ else
         echo "$error_msg"
         exit 1
 fi
-echo "
----------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # generate server and client1 keys
 wg genkey > server_private.key
 wg pubkey > server_public.key < server_private.key
@@ -71,18 +67,16 @@ sleep 2
 # Store keys into variables
 serv_priv_key=$(cat /etc/wireguard/server_private.key)
 serv_pub_key=$(cat /etc/wireguard/server_public.key)
-client_priv_key=$(cat /etc/wireguard/client_private.key)
-serv_pub_key=$(cat /etc/wireguard/client_public.key)
+client_priv_key=$(cat /etc/wireguard/client1_private.key)
+client_pub_key=$(cat /etc/wireguard/client1_public.key)
 
 #####################################
 ##### Begin server config setup #####
 #####################################
 echo "What would you like to name this WireGuard interface? Typically 'wg0'.
 This will also be the name of the server config file located in /etc/wireguard/"
-read -rp "$(echo -e $t_readin"Press enter or change if desired: "$t_reset)" -e -i "$wg0" wg_intrfc
-echo "
----------------------------------------------------------------------------------------------------------------------------
-"
+read -rp "$(echo -e $t_readin"Press enter or change if desired: "$t_reset)" -e -i "wg0" wg_intrfc
+echo "$divider_line"
 # Find user's private and public IP address + network interface
 # credit to angristan@github for the private IPv4 address and interface calculations
 pi_intrfc="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
@@ -114,12 +108,12 @@ fi
 echo "pi_prv_ip4 $pi_prv_ip4" >> $HOME/reboot_helper.txt 
 echo "pi_prv_ip6 $pi_prv_ip6" >> $HOME/reboot_helper.txt 
 
-echo "
----------------------------------------------------------------------------------------------------------------------------
-"
+echo "$divider_line"
+
 # Ask for internal IP address and subnet
-echo "Create the internal server IPv4 or IPv6 addresses that you'd
-like to associate with WireGuard in the following format: IPv4: 10.24.42.1/24 or IPv6: 1337:abcd:24::1/64
+echo "Create the internal server IPv4 or IPv6 addresses that you'd like to associate with 
+WireGuard in the following format: IPv4: 10.24.42.1/24 or IPv6: 1337:abcd:24::1/64
+
 TIPS:
 Any four-digit group of zeroes for IPv6 may be shortened to just 0 or : or ::
 IPv4 typically starts with 10 or 192, followed by two user-chosen numbers and ending in 1.
@@ -132,7 +126,7 @@ Other common subnet numbers are 16, 8, or 0.
 sleep 2
 IFS='/' read -rp "$(echo -e $t_readin"Enter internal IPv4 address in the format given: "$t_reset)" -e -i "10.24.42.1/24" -a int_addr
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
-	IFS='/' read -rp "$(echo -e $t_readin"Enter internal IPv6 address in the format given: "$t_reseet)" -e -i "1337:abcd:24::1/64" -a int_addr_temp
+	IFS='/' read -rp "$(echo -e $t_readin"Enter internal IPv6 address in the format given: "$t_reset)" -e -i "1337:abcd:24::1/64" -a int_addr_temp
 	int_addr+=( ${int_addr_temp[@]} )
 fi
 # Add int_addr to reboot_helper 
@@ -141,9 +135,8 @@ echo "int_addr[1] ${int_addr[0]}" >> $HOME/reboot_helper.txt
 echo "int_addr[2] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
 echo "int_addr[3] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
 
-echo "
----------------------------------------------------------------------------------------------------------------------------
-"
+echo "$divider_line"
+
 # Ask for listen port
 echo "Type the listen port you'd like to use, commonly a number between 49152 through 65535
 You can search https://www.iana.org/assignments/service-names-port-numbers for unassigned ports.
@@ -156,9 +149,8 @@ read -rp "$(echo -e $t_readin"Enter your desired port here: "$t_reset)" -e -i "5
 # Add listen_port to reboot_helper
 echo "listen_port $listen_port" >> $HOME/reboot_helper.txt 
 
-echo "
----------------------------------------------------------------------------------------------------------------------------
-"
+echo "$divider_line"
+
 # Ask for save choice
 echo "Do you want to save your server config file upon termination of WireGuard connection? (i.e. reboot or service stops)"
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" save_choice
@@ -170,9 +162,9 @@ else
 	echo "$error_msg"
 	exit 1
 fi
-echo "
----------------------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # Ask if user wants to use Pi's DNS
 echo "Would you like to specify the WireGuard server's IP as the DNS resolver?
 Choose yes if you plan to use Unbound to set Pi-hole as a recursive DNS resolver
@@ -182,38 +174,38 @@ See https://docs.pi-hole.net/guides/unbound/ for more information.
 dns_addr=()
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" dns_choice
 if [[ "${dns_choice^^}" == "Y" ]]; then
-        dns_choice="true"
+    dns_choice="true"
 	echo "Good choice! If you would like to add a secondary DNS provider, just append it to the following
-	using a comma and no spaces to seperate the addresses. Common choices: 1.1.1.1 or 8.8.8.8
-	Example: $pi_pub_ip4,1.1.1.1"
-	read -rp "$(echo -e $t_readin"Enter your secondary (IPv4) DNS provider or just press 'Enter': "$t_reset)" -e -i "$pi_prv_ip4" dns_v4
+using a comma and no spaces to seperate the addresses. Common choices: 1.1.1.1 or 8.8.8.8
+Example: ${int_addr[0]},1.1.1.1"
+	read -rp "$(echo -e $t_readin"Enter your secondary (IPv4) DNS provider or just press 'Enter': "$t_reset)" -e -i "${int_addr[0]}" dns_v4
 	dns_addr+=($dns_v4)
-	if [ "${ipv6_choice^^}" == "Y" ]];
+	if [[ "${ipv6_choice^^}" == "Y" ]]; then
 		echo "Let's do the same for ipv6."
-		read -rp "$(echo -e $t_readin"Enter your secondary DNS provider or just press 'Enter': "$t_reset)" -e -i "$pi_prv_ip6" dns_v6
+		read -rp "$(echo -e $t_readin"Enter your secondary DNS provider or just press 'Enter': "$t_reset)" -e -i "${int_addr[2]}" dns_v6
 		dns_addr+=($dns_v6)
 	fi
 elif [[ "${dns_choice^^}" == "N" ]]; then
 	dns_choice="false"
 	echo "Please enter the DNS address(es) that you'd like to use.
-	If you want to use more than one, seperate with a comma and no spaces.
-	Example: 1.1.1.1,8.8.8.8"
+If you want to use more than one, seperate with a comma and no spaces.
+Example: 1.1.1.1,8.8.8.8"
 	read -rp "$(echo -e $t_readin"Enter your DNS address(es) here or just press 'Enter': "$t_reset)" -e -i "1.1.1.1,8.8.8.8" dns_addr
 else
-        echo "$error_msg"
-        exit 1
+    echo "$error_msg"
+    exit 1
 fi
-echo "
--------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # Ask for network interface
 echo "I've determined that you're using '$pi_intrfc' as a network interface, but you may change it if needed.
 Typically 'eth0' for ethernet or 'wlan0' for wireless (no quotes, using the number '0' - not the letter 'o')
 "
 read -rp "$(echo -e $t_readin"Enter your interface here, or just press 'enter': "$t_reset)" -e -i "$pi_intrfc" pi_intrfc
-echo "
--------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # Ask for server's allowed IP addresses for [peer] sections
 echo "Please enter the 'allowed IPv4 Address and subnet' for the first peer on the server config file (you may add more later).
 NOTE: 0.0.0.0/0 (IPv4) or ::/0 (IPv6) will forward all traffic through this interface!
@@ -232,23 +224,23 @@ this source IP address to the VPN server. Itâ€™s also important to know that the
 with the same AllowedIPs addresses/networks inside the same configuration file. If this would be the case,
 the server would not know to which peer the server has to send packages matching multiple peers with the same network configured."
 fi
-echo "
-----------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 sleep 4
 echo "Okay, now lets move forward."
 sleep 1
 server_allowed_ips=()
-read -rp "$(echo -e $t_readin"Enter the server's allowed ipv4 address here: "$t_reset)" -e -i "10.24.42.2/32" server_allowed_ipv4
+read -rp "$(echo -e $t_readin"Enter the server's allowed ipv4 address here: "$t_reset)" -e -i "10.24.42.2/24" server_allowed_ipv4
 server_allowed_ips+=($server_allowed_ipv4)
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
 	echo "Let's do the same for ipv6."
 	read -rp "$(echo -e $t_readin"Enter the server's allowed ipv6 address here: "$t_reset)" -e -i "1337:abcd:24::2/128" server_allowed_ipv6
 	server_allowed_ips+=($server_allowed_ipv6)
 fi
-echo "
-------------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # Ask for clients allowed IP addresses
 echo "Now we will do the same but for the client's 'allowed IPv4 address and subnet',
 which should generally either be 0.0.0.0/0 (IPv4) or ::/0 (IPv6) to enable 'full tunneling',
@@ -256,39 +248,36 @@ or use the same pattern as the previously entered address(es) but with a 0 as th
  of the address (i.e. 10.24.42.0/32 or 1337:abcd:24::/128)
 "
 client_allowed_ips=()
-read -rp "$(echo -e $t_readin"Enter the client's allowed ipv4 address here: "$t_reset)" -e -i "10.24.42.0/32" client_allowed_ipv4
+read -rp "$(echo -e $t_readin"Enter the client's allowed ipv4 address here: "$t_reset)" -e -i "10.24.42.0/24" client_allowed_ipv4
 client_allowed_ips=(${client_allowed_ipv4})
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
         echo "Let's do the same for ipv6."
         read -rp "$(echo -e $t_readin"Enter the client's allowed ipv6 address here: "$t_reset)" -e -i "1337:abcd:24::/128" client_allowed_ipv6
         client_allowed_ips+=($client_allowed_ipv6)
 fi
-echo "
---------------------------------------------------------------------------------------------------------------------
-"
-# Ask for preshared key
-echo "Would you like to include a preshared key for added (optional) security?"
-read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" p_choice
-if [[ "${p_choice^^}" == "Y" ]]; then
-        p_choice="true"
-	if [ -f /etc/wireguard/preshared ]; then
-		sudo chmod 077 etc/wireguard
+
+echo "$divider_line"
+
+# Check if user wanted to use preshared key
+if [[ "${keychoice^^}" == "Y" ]]; then
+	if [[ ! -f /etc/wireguard/preshared ]]; then
+		sudo chmod 077 /etc/wireguard
 		cd /etc/wireguard
 		wg genpsk > preshared
 		pre_key="$(sudo cat /etc/wireguard/preshared)"
-		sudo chmod 700 etc/wireguard
+		sudo chmod 700 /etc/wireguard
 	else
 		pre_key="$(sudo cat /etc/wireguard/preshared)"
-else if [[ "{$p_choice^^}" == "N" ]]; then
-        p_choice="false"
-	echo "Okay, moving on then!"
+	fi
+elif [[ "${keychoice^^}" == "N" ]]; then
+    echo "Okay, moving on then..."
 else
-        echo "$error_msg"
-        exit 1
+    echo "$error_msg"
+    exit 1
 fi
-echo "
----------------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # Ask for endpoint
 echo "Would you like to setup an endpoint for the first client config file?
 Note: This generally must be accessible via the public internet (like a domain)
@@ -316,14 +305,13 @@ else
         exit 1
 fi
 
-echo "
----------------------------------------------------------------------------------------------------------------------
+echo "$divider_line
 What would you like to name your first client? This will also be the name of the file
 located in the /etc/wireguard/ folder. Can be anything you want, just don't use any spaces"
 read -rp "$(echo -e $t_readin"Press enter or change the client name if desired: "$t_reset)" -e -i "client-1" client_name
 
-echo "
-----------------------------------------------------------------------------------------------------------------------
+# TODO: read in $table_choice from reboot_helper.txt
+echo "$divider_line
 Finally, would you like to use legacy iptables (default) or the newer nftables to
 configure this server's firewall?
 NOTE: This feature is still experimental, if you choose nftables please review
@@ -342,11 +330,12 @@ elif [[ "${table_choice^^}" == "N" ]]; then
 else
 	echo "Something went wrong setting up the server's PostUp and PostDown rules!"
 fi
-echo "
------------------------------------------------------------------------------------------------------------------------
+
+echo "$divider_line
 Okay, I'm now going to create your server and client config files!
 They will be located in /etc/wireguard - you will need to be sudo to open them
 "
+
 # TODO: allow for multiple clients to be added
 # TODO: check if sudo sh is needed for cat
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
@@ -369,7 +358,7 @@ AllowedIPs = ${server_allowed_ips[0]}, ${server_allowed_ips[1]}
 EOF
 
 # Setup client1.conf for IPv6
-sudo cat <<EOF> etc/wireguard/$client_name.conf
+sudo cat <<EOF> /etc/wireguard/$client_name.conf
 [Interface]
 # Client1
 Address = ${server_allowed_ips[0]}, ${server_allowed_ips[1]}
@@ -405,7 +394,7 @@ DNS = ${dns_addr[0]}
 EOF
 
 # Setup client1.conf for IPv4
-sudo cat <<EOF> etc/wireguard/$client_name.conf
+sudo cat <<EOF> /etc/wireguard/$client_name.conf
 [Interface]
 Address = ${server_allowed_ips[0]}
 SaveConfig = $save_conf
@@ -425,14 +414,14 @@ fi
 # Check if user wants to use endpoint on their client config
 if [ "$e_choice" == "true" ]; then
 	if [[ "$e_ip_choice" == "6" ]]; then
-        	echo "Endpoint = $serv_pub_ipv6:$listen_port" >> /etc/wireguard/$client_name.conf
+        sudo sh -c "echo "Endpoint = $serv_pub_ipv6:$listen_port" >> /etc/wireguard/$client_name.conf"
 	else
-		echo "Endpoint = $serv_pub_ipv4:$listen_port" >> /etc/wireguard/$client_name.conf
+		sudo sh -c "echo "Endpoint = $serv_pub_ipv4:$listen_port" >> /etc/wireguard/$client_name.conf"
         fi
 fi
-if [ "$p_choice" == "true" ]; then
-	echo "PresharedKey = $pre_key" >> /etc/wireguard/$client_name.conf
-	echo "PresharedKey = $pre_key" >> /etc/wireguard/$wg_intrfc.conf
+if [[ "${keychoice^^}" == "Y" ]]; then
+	sudo sh -c "echo "PresharedKey = $pre_key" >> /etc/wireguard/$client_name.conf"
+	sudo sh -c "echo "PresharedKey = $pre_key" >> /etc/wireguard/$wg_intrfc.conf"
 fi
 
 # Check if user wants to use presistent-keepalive
@@ -457,22 +446,26 @@ data known as 'keepalive packets' to the WireGuard server that basically just te
 that they are still active every 25 seconds. As WireGuard puts it, you should only need it if you are 
 'behind NAT or a firewall and you want to receive incoming connections long after network traffic has 
 gone silent, this option will keep the 'connection' open in the eyes of NAT.'"
+
+	echo "$divider_line"
 	read -rp "$(echo -e $t_readin"Whew! Okay, that was a lot. Press enter whenever you're ready to move on: "$t_reset)" -e -i "" pka_move_forward
 fi
+
+echo "$divider_line"
 echo "Alright, so would you like to enable persistentKeepalive?"
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" pka_choice
+
 if [[ "${pka_choice^^}" == "Y" ]]; then
 	read -rp "$(echo -e $t_readin"What number of seconds would you like to use? "$t_reset)" -e -i "25" pka_num 
 	echo "Okay, I'll go ahead and set that for you."
-	echo "PersistentKeepalive = $pka_num" >> /etc/wireguard/$client_name.conf
+	sudo sh -c "echo 'PersistentKeepalive = $pka_num' >> /etc/wireguard/$client_name.conf"
 elif [[ "${pka_choice^^}" == "N" ]]; then
 	echo "Alright, moving on then!"
 else
 	echo "$error_msg"
 fi
 
-echo "
------------------------------------------------------------------------------------
+echo "$divider_line
 Okay, I've created the config files for your server and first client!
 Now would you like me to set up some additional firewall rules?
 If yes, I'd suggest reading over the code to make sure they work in your situation.
@@ -487,10 +480,9 @@ else
 	exit 1
 fi
 
+echo "$divider_line"
 
-echo -e  $t_bold"
---------------------------------------------------------------------------------------------------------------
-We're done setting up WireGuard on the server-side, so lets start it up!
+echo -e  $t_bold"We're done setting up WireGuard on the server-side, so lets start it up!
 (I'll pause for a few seconds in case you want to read the output from starting the server)
 "$t_reset
 
@@ -499,27 +491,26 @@ sudo wg-quick up wg0
 sudo wg
 # Sleep for a few seconds to read output
 sleep 5
-echo "
---------------------------------------------------------------------------------------------------------------
-"
+
+echo "$divider_line"
+
 # Ask if using mobile
 echo "Will you be connecting to a mobile device? If so, I can download and display a QR code for you to scan"
 echo "Note: This is currently one of the most secure ways to connect to a mobile device."
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" m_choice
 if [[ "${m_choice^^}" == "Y" ]]; then
-    sudo apt install qrencode -y
-	qrencode -t ansiutf8 < /etc/wireguard/$client_name.conf
-else if [[ "${m_choice^^}" == "N" ]]; then
-    echo "Please refer to the github readme or other online sources to configure communications"
+	sudo apt install qrencode -y
+	sudo sh -c "qrencode -t ansiutf8 < /etc/wireguard/$client_name.conf"
+elif [[ "${m_choice^^}" == "N" ]]; then
+	echo "Please refer to the github readme or other online sources to configure communications"
 	echo "with other sources. This installer will create one client script, but the rest is up to you!"
 else
-    echo "$error_msg"
-    exit 1
+	echo "$error_msg"
+	exit 1
 fi
 
-echo "
--------------------------------------------------------------------------------------------------------------
-"
+echo "$divider_line"
+
 sudo sysctl --system
 # Ask to enable wg-quick@wg0
 echo "Would you like to automatically start WireGuard upon login? (typically 'yes')"
@@ -527,7 +518,7 @@ read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" auto_choice
 if [[ "${auto_choice^^}" == "Y" ]]; then
 	sudo systemctl start wg-quick@$wg_intrfc
 	sudo systemctl enable wg-quick@$wg_intrfc
-else if [[ "${auto_choice^^}" == "Y" ]]; then
+elif [[ "${auto_choice^^}" == "Y" ]]; then
 	echo "Okay, if you want to enable auto-start at another time, the command is: "
 	echo "'sudo systemctl enable wg-quick@wg0'"
 else
@@ -569,9 +560,9 @@ install_pi-hole(){
 	echo "And thats it for pi-hole!"
 	echo "----------------------------------------------------------------------------------------------------"
 	echo "NOTE: This installation method uses the command: # sudo curl -ssL https://instal.pi-hole.net | bash"
-        echo "It is generally bad practice to curl into bash, but in this case we know that"
-        echo "the script is from a reputable source. It still couldn't hurt to look over the code yourself"
-        echo "if you're concered or interested!"
+    echo "It is generally bad practice to curl into bash, but in this case we know that"
+    echo "the script is from a reputable source. It still couldn't hurt to look over the code yourself"
+    echo "if you're concered or interested!"
 	echo -e $t_important"IMPORTANT: YOU MUST MANUALLY REBOOT ONCE PI-HOLE IS FINISHED INSTALLING"$t_reset
 	echo -e $t_important"IF AUTOLOGIN IS ENABLED, THIS SCRIPT SHOULD PICK BACK UP WHERE WE LEFT OFF"$t_reset
 	echo "I recommend screenshotting these instructions if you are using SSH, "
@@ -727,6 +718,7 @@ if [[ "${pihole_choice^^}" == "Y" && ! -f $DIR/pihole_checkpoint.txt ]]; then
 		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
 		host pagead2.googlesyndication.com ${int_addr[2]}
 		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
+	fi
 fi
 if [[ "${unb_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt]]; then
 	install_unbound
