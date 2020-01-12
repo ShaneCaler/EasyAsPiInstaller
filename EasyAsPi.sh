@@ -3,45 +3,16 @@
 # MAKE SURE TO ENABLE AUTOLOGIN IN RASPI-CONFIG
 
 # Check to see if this script has been ran before and prompt to create client if so
-test=$( tail -n 1 EasyAsPi.sh )
-if [[ "$test" == "SERVERCOMPLETE" ]]; then
+finishedTest=$( tail -n 1 EasyAsPi.sh )
+if [[ "$finishedTest" == "SERVERCOMPLETE" ]]; then
 	. "$DIR/create_new_client.sh"
 	exit 0
 fi
 
-# Execute functions 
-
-# Check if this is the first time being run
-if [[ ! -f $HOME/reboot_helper.txt ]]; then
-	# If its before first reboot, set DIR and place it in reboot_helper.txt
-	DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-	echo "$DIR" >> $HOME/reboot_helper.txt
-	before_first_reboot
-	find_arch_and_install
-elif [[ -f $HOME/reboot_helper.txt ]]; then
-	# Not the first run, grab previously stored DIR and cd into it
-	read -r DIR < $HOME/reboot_helper.txt
-	cd $DIR
-	# Find what checkpoint we are at
-	if [[ -f $DIR/wg_install_checkpoint1.txt && ! -f $DIR/wg_install_checkpoint2.txt ]]; then
-		find_arch_and_install
-	elif [[ ! -f $DIR/firewall_checkpoint_p2.txt && -f $DIR/wg_install_checkpoint2.txt ]]; then
-		after_first_reboot
-	elif [[ -f $DIR/wg_config_checkpoint.txt && "$test" != "SERVERCOMPLETE" ]]; then
-		after_wireguard_configuration
-	fi
-else
-	echo "Something went wrong and I'm not sure where to start. Exiting."			
+# Grab necessary variables from reboot helper
+if [[ -f $HOME/reboot_helper.txt ]]; then
+	saved_firewall_choice="$(awk '/firewall_choice/{print $NF}' $HOME/reboot_helper.txt)"
 fi
-
-
-#if [[ num_files_in_dir -eq 7 ]]; then
-#	# Setup handling of source files
-#	DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-#	echo "$DIR" >> $DIR/reboot_helper.txt
-#elif [[ -f $HOME/reboot_helper.txt ]]; then
-#	# Not the first run, grab previously stored $DIR and cd into it
-#	read -r DIR<reboot_helper.txt
 
 # Create text-formatting variables
 t_reset="\e[0;39;49m"
@@ -61,7 +32,7 @@ find_arch_and_install(){
 	pi_model=$(cat /sys/firmware/devicetree/base/model | awk '{print $3, $4}')
 	pi_revision=$(cat /sys/firmware/devicetree/base/model | sed -n -e 's/^.*Rev //p')
 	if [[ ! -f $DIR/wg_install_checkpoint1.txt ]]; then
-		if [[ "$pi_model" == "Zero Rev" || "$pi_model" == "Zero W" || "$pi_model" == "Model A" "$pi_model" == "Model B" ]]; then
+		if [[ "$pi_model" == "Zero Rev" || "$pi_model" == "Zero W" || "$pi_model" == "Model A" || "$pi_model" == "Model B" ]]; then
 			echo "Alright, from what I can tell, you are using a $pi_model Raspberry Pi device"
 			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
 			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
@@ -76,7 +47,7 @@ find_arch_and_install(){
 			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
 			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
 			pi_type=0
-			# Call setup_for_armhf script
+			# Call setup_for_lowend script
 			. "$DIR/setup_for_lowend.sh"
 		else
 			echo "Alright, looks like you have a device that runs on a modern architecture!"
@@ -90,14 +61,9 @@ find_arch_and_install(){
 		fi
 	fi
 	
+	# Call setup script for the second time
 	if [[ ! -f $DIR/wg_install_checkpoint2.txt && -f $DIR/wg_install_checkpoint1.txt ]]; then
-		echo "Alright, we're back from the first reboot. Ready to continue?"
-		read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
-		if [[ pi_type == 0 ]]; then	
-			. "$DIR/setup_for_lowend.sh"
-		else
-			. "$DIR/setup_for_standard.sh"
-		fi
+
 	fi
 	
 		
@@ -118,6 +84,7 @@ This is very important for the script to function properly (since we'll be insta
 Enabling this setting will allow the script to continue where it left off after rebooting.
 You can immediately change it back after everything is done!"
 	echo ""
+	
 	# Also check for SSH, as auto-start won't be possible
 	echo -e "$t_bold"NOTE:"$t_reset if you are using SSH, you will need to manually restart the script after rebooting,
 since you won't have access to the same terminal afterwards. After rebooting, type 'cd EasyAsPiInstaller' and
@@ -192,9 +159,9 @@ Please either: Re-run this script using sudo OR temporarily remove/disable your 
 	sleep 1	
 } # END before_first_reboot
 
-after_first_reboot(){
+after_wireguard_installation(){
 	# Check that wireguard is installed
-	read -rp "$(echo -e $t_readin"Okay, we've rebooted. Press enter to check if wireguard is still loaded :"$t_reset)" -e -i "" mv_fwd
+	read -rp "$(echo -e $t_readin"Okay, we've rebooted. Press enter to check if wireguard is still loaded: "$t_reset)" -e -i "" mv_fwd
 	sudo lsmod | grep wireguard
 	echo "$divider_line"
 	if [ $? -eq 0 ]; then
@@ -211,47 +178,17 @@ after_first_reboot(){
 
 	echo "Would you like me to handle firewall settings? Choose 'No' if you'd prefer to manage them yourself."
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" firewall_choice
+	
+	# Add firewall_choice to reboot_helper
+	echo "firewall_choice $firewall_choice" >> $HOME/reboot_helper.txt 
+	
 	if [[ "${firewall_choice^^}" == "Y" ]]; then	
-			# Pre-WireGuard firewall configuration
-			[[ ! -f $DIR/firewall_checkpoint_p1.txt ]] && . "$DIR/configure_firewall.sh" phase1
+		# Pre-WireGuard firewall configuration
+		. "$DIR/configure_firewall.sh" phase1
 	elif [[ "${firewall_choice^^}" == "N" ]]; then
 		echo "Okay, I won't change any of your firewall settings. Just be sure to do them yourself ASAP!"
 		echo "Otherwise, your server will be insecure and vulnerable to hackers!"
-		echo "I will, however, need to run the following commands to enable IPv4 and (optionally) IPv6 forwarding."
-		echo "This first command does the actual forwarding: "
-		echo "	'sudo perl -pi -e 's/#{1,}?net.ipv4.ip_forward ?= ?(0|1)/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf'"
-		echo "		A similar variation will be used for IPv6"
-		echo "Second, in order to enable IPv4/IPv6 without the need to reboot, I will run: "
-		echo "	'sudo sysctl -p' and 'sudo sh -c \"echo 1 > /proc/sys/net/ipv4/ip_forward\"'"
-		echo "		Likewise, a similar variation will be used for IPv6"
-		sleep 3
-		echo "$divider_line"
-		echo "Now, before I do anything, would you like to set up Wireguard, Pi-Hole and Unbound using IPv6?"
-		echo "This is completely optional and should only be chosen by those who know what they are doing. Choose 'N' to simply use IPv4!"
-		read -rp "$(echo -e $t_readin"Enter Y for yes, N for no (Again, only choose 'Y' if you know what you are doing!): "$t_reset)" -e -i "N" ipv6_choice
-		
-		# Add ipv6_choice to reboot_helper
-		echo "ipv6_choice $ipv6_choice" >> $HOME/reboot_helper.txt 
-		
-		# Enable IPv4 (and IPv6) forwarding and avoid rebooting
-		sudo perl -pi -e 's/#{1,}?net.ipv4.ip_forward ?= ?(0|1)/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf
-	
-		if [[ "${ipv6_choice^^}" == "Y" ]]; then
-			sudo perl -pi -e 's/#{1,}?net.ipv6.conf.all.forwarding ?= ?(0|1)/net.ipv6.conf.all.forwarding = 1/g' /etc/sysctl.conf
-		elif [[ "${ipv6_choice^^}" == "N" ]]; then
-			echo "Okay, moving on then..."
-		else
-			echo "You must type Y or N to continue, please start over"
-			exit 1
-		fi
-		
-		# Enable without rebooting
-		sudo sysctl -p
-		sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
-		if [[ "${ipv6_choice^^}" == "Y" ]]; then
-			sudo sh -c "echo 1 > /proc/sys/net/ipv6/conf/all/forwarding"
-		fi
-	
+		. "$DIR/configure_firewall.sh" phase1	
 	else
 		echo "$error_msg"
 	fi
@@ -263,11 +200,11 @@ after_first_reboot(){
 	sleep 2
 	. "$DIR/configure_wireguard.sh"
 
-} # END after_first_reboot
+} # END after_wireguard_installation
 
 after_wireguard_configuration(){
 	# Post-WireGuard firewall configuration
-	if [[ "${firewall_choice^^}" == "Y" ]]; then
+	if [[ "${saved_firewall_choice^^}" == "Y" ]]; then
 		echo "$divider_line"
 		echo "We will now begin phase 2 of firewall configuration!"
 		echo "$divider_line"
@@ -343,3 +280,34 @@ after_wireguard_configuration(){
 } # End after_wireguard_configuration
 
 
+# Execute functions 
+# Check if this is the first time being run
+if [[ ! -f $HOME/reboot_helper.txt ]]; then
+	# If its before first reboot, set DIR and place it in reboot_helper.txt
+	DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+	echo "$DIR" >> $HOME/reboot_helper.txt
+	before_first_reboot
+	find_arch_and_install
+elif [[ -f $HOME/reboot_helper.txt ]]; then
+	# Not the first run, grab previously stored DIR and cd into it
+	read -r DIR < $HOME/reboot_helper.txt
+	cd $DIR
+	
+	# Find what checkpoint we are at
+	if [[ -f $DIR/wg_install_checkpoint1.txt && ! -f $DIR/wg_install_checkpoint2.txt ]]; then
+		# If we are at checkpoint 1 for wireguard installation, run setup script again
+		echo "Alright, we're back from the first reboot. Ready to continue?"
+		read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
+		if [[ pi_type == 0 ]]; then	
+			. "$DIR/setup_for_lowend.sh"
+		else
+			. "$DIR/setup_for_standard.sh"
+		fi
+	elif [[ ! -f $DIR/firewall_checkpoint_p2.txt && -f $DIR/wg_install_checkpoint2.txt ]]; then
+		after_wireguard_installation
+	elif [[ -f $DIR/wg_config_checkpoint.txt && "$finishedTest" != "SERVERCOMPLETE" ]]; then
+		after_wireguard_configuration
+	fi
+else
+	echo "Something went wrong and I'm not sure where to start. Exiting."			
+fi

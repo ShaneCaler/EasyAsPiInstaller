@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Grab necessary variables from reboot helper
+if [[ -f $HOME/reboot_helper.txt ]]; then
+	saved_table_choice="$(awk '/table_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	saved_firewall_choice="$(awk '/firewall_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	saved_ipv6_choice="$(awk '/saved_ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	saved_int_addr_0="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	saved_int_addr_2="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
+	saved_unb_choice="$(awk '/unb_choice/{print $NF}' $HOME/reboot_helper.txt)"
+fi
+
 echo "$divider_line
 Alright, first things first: Would you like to install pi-hole after we set up WireGuard?
 According to the developers, 'the Pi-hole is a DNS sinkhole that protects your
@@ -10,6 +20,10 @@ if [[ "${pihole_choice^^}" == "Y" ]]; then
 	echo "DNS server'? For info on what that is, please refer to the official pi-hole docs"
 	echo "at https://docs.pi-hole.net/guides/unbound/"
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" unb_choice
+	
+	# Add unbound choice to reboot_helper
+	echo "unb_choice $unb_choice" >> $HOME/reboot_helper.txt 
+	
 	if [[ "${unb_choice^^}" != "Y" && "${unb_choice^^}" != "N" ]]; then
 		echo "$error_msg"
 		exit 1
@@ -77,6 +91,7 @@ echo "What would you like to name this WireGuard interface? Typically 'wg0'.
 This will also be the name of the server config file located in /etc/wireguard/"
 read -rp "$(echo -e $t_readin"Press enter or change if desired: "$t_reset)" -e -i "wg0" wg_intrfc
 echo "$divider_line"
+
 # Find user's private and public IP address + network interface
 # credit to angristan@github for the private IPv4 address and interface calculations
 pi_intrfc="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
@@ -86,16 +101,12 @@ pi_pub_ip6=$(ip -6 addr show dev $pi_intrfc | grep 'inet6*' | awk '{print $2}' |
 pi_pub_ip4=$(host -4 myip.opendns.com resolver1.opendns.com | grep "myip.opendns.com has" | awk '{print $4}')
 pi_gateway=$(ip r | grep default | awk '{print $3}')
 
-# Add variables to reboot_helper
-echo "pi_intrfc $pi_intrfc" >> $HOME/reboot_helper.txt 
-echo "pi_pub_ip4 $pi_pub_ip4" >> $HOME/reboot_helper.txt 
-echo "pi_gateway $pi_gateway" >> $HOME/reboot_helper.txt 
-
 echo "I have calculated your server's IPv4/IPv6 address, but you may change them now if they are incorrect for some reason.
 NOTE: This is different from the server's WireGuard address that we'll assign manually later. If everything looks OK, just hit 'enter'
 "
 read -rp "$(echo -e $t_readin"Replace with your server's IPv4 address and subnet (or just press enter): "$t_reset)" -e -i "$pi_prv_ip4" pi_prv_ip4
 echo " "
+
 # Grab ipv6_choice from reboot_helper
 ipv6_choice="$(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
@@ -104,9 +115,13 @@ if [[ "${ipv6_choice^^}" == "Y" ]]; then
 elif [[ "${ipv6_choice^^}" == "N" ]]; then
 	echo "Alright, moving on then!"
 fi
+
 # Add variables to reboot_helper
 echo "pi_prv_ip4 $pi_prv_ip4" >> $HOME/reboot_helper.txt 
 echo "pi_prv_ip6 $pi_prv_ip6" >> $HOME/reboot_helper.txt 
+echo "pi_intrfc $pi_intrfc" >> $HOME/reboot_helper.txt 
+echo "pi_pub_ip4 $pi_pub_ip4" >> $HOME/reboot_helper.txt 
+echo "pi_gateway $pi_gateway" >> $HOME/reboot_helper.txt 
 
 echo "$divider_line"
 
@@ -129,7 +144,8 @@ if [[ "${ipv6_choice^^}" == "Y" ]]; then
 	IFS='/' read -rp "$(echo -e $t_readin"Enter internal IPv6 address in the format given: "$t_reset)" -e -i "1337:abcd:24::1/64" -a int_addr_temp
 	int_addr+=( ${int_addr_temp[@]} )
 fi
-# Add int_addr to reboot_helper 
+
+# Add int_addr fields to reboot_helper 
 echo "int_addr[0] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
 echo "int_addr[1] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
 echo "int_addr[2] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
@@ -310,25 +326,27 @@ What would you like to name your first client? This will also be the name of the
 located in the /etc/wireguard/ folder. Can be anything you want, just don't use any spaces"
 read -rp "$(echo -e $t_readin"Press enter or change the client name if desired: "$t_reset)" -e -i "client-1" client_name
 
-# TODO: read in $table_choice from reboot_helper.txt
-echo "$divider_line
-Finally, would you like to use legacy iptables (default) or the newer nftables to
-configure this server's firewall?
-NOTE: This feature is still experimental, if you choose nftables please review
-this script's code and make sure that it looks OK. I will link the resources that
-I used to create the firewall commands in the references section of the github readme.
-"
-if [[ "${table_choice^^}" == "Y" ]]; then
+echo "$divider_line"
+
+# Configure post up and post down rules
+if [[ "${saved_table_choice^^}" == "Y" ]]; then
 	# TODO: Add nftables for post_up
-	post_up_tables="nft add rule ip filter FORWARD iifname "$wg_intrfc" counter accept; nft add rule ip nat POSTROUTING oifname "$pi_intrfc" counter masquerade; nft add rule ip6 filter FORWARD iifname "$wg_intrfc" counter accept; nft add rule ip6 nat POSTROUTING oifname "$pi_intrfc" counter masquerade"
-	
+	if [[ "${ipv6_choice^^}" == "Y" ]]; then
+		post_up_tables="nft add rule ip filter FORWARD iifname \"$wg_intrfc\" counter accept; nft add rule ip nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade; nft add rule ip6 filter FORWARD iifname \"$wg_intrfc\" counter accept; nft add rule ip6 nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade"
+		post_down_tables="nft delete rule filter FORWARD handle 11; nft drop rule ip nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade; nft drop rule ip6 filter FORWARD iifname \"$wg_intrfc\" counter accept; nft drop rule ip6 nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade"
+	else
+		post_up_tables="nft add rule ip filter FORWARD iifname \"$wg_intrfc\" counter accept; nft add rule ip nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade"
+		post_down_tables="nft delete rule filter FORWARD handle 11; nft drop rule ip nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade"
+	fi
 	p_d_handle="$(sudo nft list table filter -a | grep 'iifname' | awk '{print $11}')"
-	post_down_tables="nft delete rule filter FORWARD handle 11; nft drop rule ip nat POSTROUTING oifname "$pi_intrfc" counter masquerade; nft drop rule ip6 filter FORWARD iifname "$wg_intrfc" counter accept; nft drop rule ip6 nat POSTROUTING oifname "$pi_intrfc" counter masquerade"
-elif [[ "${table_choice^^}" == "N" ]]; then
-	post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -A FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
-	post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -D FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
 else
-	echo "Something went wrong setting up the server's PostUp and PostDown rules!"
+	if [[ "${ipv6_choice^^}" == "Y" ]]; then
+		post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -A FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
+		post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -D FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
+	else
+		post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
+		post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
+	fi
 fi
 
 echo "$divider_line
@@ -345,27 +363,28 @@ sudo cat <<EOF> /etc/wireguard/$wg_intrfc.conf
 Address = ${int_addr[0]}/${int_addr[1]}, ${int_addr[2]}/${int_addr[3]}
 SaveConfig = $save_conf
 ListenPort = $listen_port
+DNS = ${dns_addr[1]}
+
 PrivateKey = $serv_priv_key
+
 PostUp = $post_up_tables
 PostDown = $post_down_tables
 
 [Peer]
-
 # Client1
 PublicKey = $client_pub_key
 AllowedIPs = ${server_allowed_ips[0]}, ${server_allowed_ips[1]}
 
 EOF
 
-# Setup client1.conf for IPv6
-sudo cat <<EOF> /etc/wireguard/$client_name.conf
+	# Setup client1.conf for IPv6
+	sudo cat <<EOF> /etc/wireguard/$client_name.conf
 [Interface]
 # Client1
 Address = ${server_allowed_ips[0]}, ${server_allowed_ips[1]}
-SaveConfig = $save_conf
 ListenPort = $listen_port
 PrivateKey = $client_priv_key
-DNS = ${dns_addr[0]},${dns_addr[1]}
+DNS = ${dns_addr[1]}
 
 [Peer]
 # Server1
@@ -375,13 +394,16 @@ AllowedIPs = ${client_allowed_ips[0]}, ${client_allowed_ips[1]}
 EOF
 
 else
-# Setup configs for IPv4 only
-sudo cat <<EOF> /etc/wireguard/$wg_intrfc.conf
+	# Setup configs for IPv4 only
+	sudo cat <<EOF> /etc/wireguard/$wg_intrfc.conf
 [Interface]
 Address = ${int_addr[0]}/${int_addr[1]}
 SaveConfig = $save_conf
 ListenPort = $listen_port
+DNS = ${dns_addr[0]}
+
 PrivateKey = $serv_priv_key
+
 PostUp = $post_up_tables
 PostDown = $post_down_tables
 
@@ -389,17 +411,17 @@ PostDown = $post_down_tables
 #Client1
 PublicKey = $client_pub_key
 AllowedIPs = ${server_allowed_ips[0]}
-DNS = ${dns_addr[0]}
 
 EOF
 
-# Setup client1.conf for IPv4
-sudo cat <<EOF> /etc/wireguard/$client_name.conf
+	# Setup client1.conf for IPv4
+	sudo cat <<EOF> /etc/wireguard/$client_name.conf
 [Interface]
 Address = ${server_allowed_ips[0]}
-SaveConfig = $save_conf
 ListenPort = $listen_port
+
 PrivateKey = $client_priv_key
+
 DNS = ${dns_addr[0]}
 
 [Peer]
@@ -414,14 +436,14 @@ fi
 # Check if user wants to use endpoint on their client config
 if [ "$e_choice" == "true" ]; then
 	if [[ "$e_ip_choice" == "6" ]]; then
-        sudo sh -c "echo "Endpoint = $serv_pub_ipv6:$listen_port" >> /etc/wireguard/$client_name.conf"
+        sudo sh -c "echo \"Endpoint = $endp_ip:$listen_port\" >> /etc/wireguard/$client_name.conf"
 	else
-		sudo sh -c "echo "Endpoint = $serv_pub_ipv4:$listen_port" >> /etc/wireguard/$client_name.conf"
+		sudo sh -c "echo \"Endpoint = $endp_ip:$listen_port\" >> /etc/wireguard/$client_name.conf"
         fi
 fi
 if [[ "${keychoice^^}" == "Y" ]]; then
-	sudo sh -c "echo "PresharedKey = $pre_key" >> /etc/wireguard/$client_name.conf"
-	sudo sh -c "echo "PresharedKey = $pre_key" >> /etc/wireguard/$wg_intrfc.conf"
+	sudo sh -c "echo \"PresharedKey = $pre_key\" >> /etc/wireguard/$client_name.conf"
+	sudo sh -c "echo \"PresharedKey = $pre_key\" >> /etc/wireguard/$wg_intrfc.conf"
 fi
 
 # Check if user wants to use presistent-keepalive
@@ -455,6 +477,9 @@ echo "$divider_line"
 echo "Alright, so would you like to enable persistentKeepalive?"
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" pka_choice
 
+# save pka_choice to use in configure_firewall
+echo "pka_choice $pka_choice" >> $HOME/reboot_helper.txt 
+
 if [[ "${pka_choice^^}" == "Y" ]]; then
 	read -rp "$(echo -e $t_readin"What number of seconds would you like to use? "$t_reset)" -e -i "25" pka_num 
 	echo "Okay, I'll go ahead and set that for you."
@@ -487,7 +512,7 @@ echo -e  $t_bold"We're done setting up WireGuard on the server-side, so lets sta
 "$t_reset
 
 # Start the server!
-sudo wg-quick up wg0
+sudo wg-quick up $wg_intrfc
 sudo wg
 # Sleep for a few seconds to read output
 sleep 5
@@ -516,8 +541,8 @@ sudo sysctl --system
 echo "Would you like to automatically start WireGuard upon login? (typically 'yes')"
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" auto_choice
 if [[ "${auto_choice^^}" == "Y" ]]; then
-	sudo systemctl start wg-quick@$wg_intrfc
-	sudo systemctl enable wg-quick@$wg_intrfc
+	sudo sh -c "systemctl enable wg-quick@$wg_intrfc"
+	sudo sh -c "systemctl start wg-quick@$wg_intrfc"
 elif [[ "${auto_choice^^}" == "Y" ]]; then
 	echo "Okay, if you want to enable auto-start at another time, the command is: "
 	echo "'sudo systemctl enable wg-quick@wg0'"
@@ -533,9 +558,12 @@ sudo chmod -R og-rwx /etc/wireguard/wg0.conf
 sudo chmod 700 /etc/wireguard
 
 # Install pi-hole
-install_pi-hole(){
+install_pihole(){
+	echo "Alright, let's start setting up pi-hole. First I'm going to install resolvconf, and then
+I'll explain your next steps! $divider_line"
+	sleep 2
 	# Install resolvconf before pi-hole
-	sudo apt install resolveconf -y
+	sudo apt install resolvconf -y
 
 	echo -e $t_important"---------IMPORTANT!! PLEASE READ!!---------"$t_reset
 	echo -e $t_important"---------IMPORTANT!! PLEASE READ!!---------"$t_reset
@@ -568,19 +596,19 @@ install_pi-hole(){
 	echo "I recommend screenshotting these instructions if you are using SSH, "
 	echo "Or just take a picture with your phone. Good luck and I'll see you once you're done!"
 	read -rp "$(echo -e $t_readin"Type Y whenever you're ready to start the pi-hole installation: "$t_reset)" -e -i "" p_start_choice
-	if [[ "{p_start_choice^^}" == "Y"]]; then
-echo '
-				 __
-		 _(\    |@@|
-		(__/\__ \--/ __         See You Soon!
-		   \___|----|  |   __
-			   \ }{ /\ )_ / _\
-			   /\__/\ \__O (__
-			  (--/\--)    \__/
-			  _)(  )(_
-			 `---  ---`
+	if [[ "${p_start_choice^^}" == "Y" ]]; then
+# echo '
+				 # __
+		 # _(\    |@@|
+		# (__/\__ \--/ __         See You Soon!
+		   # \___|----|  |   __
+			   # \ }{ /\ )_ / _\
+			   # /\__/\ \__O (__
+			  # (--/\--)    \__/
+			  # _)(  )(_
+			 # `---  ---`
 
-'
+# '
 		# Create checkpoint file
 		echo "pi-hole checkpoint" > $HOME/pihole_checkpoint.txt
 		sleep 3
@@ -706,21 +734,22 @@ if [[ "${pihole_choice^^}" == "Y" && ! -f $DIR/pihole_checkpoint.txt ]]; then
 	echo "First, I will run it against the server host using Pi-hole's DNS to verify that it is active,"
 	echo "And then I'll run it against 'pagead2.googlesyndication.com' to verify that ads are being served"
 	echo "By the Pi-hole. You should see the custom IP that you set earlier next to 'has address'"
-	if [[ "{ipv6_choice^^}" == "Y" ]]; then
-		echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[0]}"$t_reset
-		host $HOSTNAME ${int_addr[0]}
+	if [[ "${saved_ipv6_choice^^}" == "Y" ]]; then
+		echo -e $t_bold"Running '# host $HOSTNAME $saved_int_addr_0"$t_reset
+		host $HOSTNAME $saved_int_addr_0
 		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
-		host pagead2.googlesyndication.com ${int_addr[0]}
+		host pagead2.googlesyndication.com $saved_int_addr_0
 		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
 	else
-		echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[2]}"$t_reset
-		host $HOSTNAME ${int_addr[2]}
-		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
-		host pagead2.googlesyndication.com ${int_addr[2]}
+		echo -e $t_bold"Running '# host $HOSTNAME $saved_int_addr_2"$t_reset
+		host $HOSTNAME $saved_int_addr_2
+		echo -e $t_bold"Running '# host pagead2.googlesyndication.com $saved_int_addr_2"$t_reset
+		host pagead2.googlesyndication.com $saved_int_addr_2
 		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
 	fi
 fi
-if [[ "${unb_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt]]; then
+
+if [[ "${saved_unb_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt]]; then
 	install_unbound
 fi
 
