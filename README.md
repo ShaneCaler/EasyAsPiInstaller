@@ -1,6 +1,8 @@
 # Easy As Pi Installer
 A one-stop-shop to set up WireGuard, Pi-Hole and Unbound for all versions of Raspberry Pi (armhf included!)
 
+NOTE: This is still a work in progress and is by no means stable. Use/modify at your own discretion!
+
 ## Here's what you need to do first:
 1. IMPORTANT: Temporarily set up 'autologin' using the raspi-config utility (you can change this back immediately afterwards)
 ```sudo raspi-config

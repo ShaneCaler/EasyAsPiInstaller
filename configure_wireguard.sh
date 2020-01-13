@@ -4,31 +4,41 @@
 if [[ -f $HOME/reboot_helper.txt ]]; then
 	saved_table_choice="$(awk '/table_choice/{print $NF}' $HOME/reboot_helper.txt)"
 	saved_firewall_choice="$(awk '/firewall_choice/{print $NF}' $HOME/reboot_helper.txt)"
-	saved_ipv6_choice="$(awk '/saved_ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
 	saved_int_addr_0="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
 	saved_int_addr_2="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
-	saved_unb_choice="$(awk '/unb_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	ipv6_choice="$(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
 fi
 
-echo "$divider_line
-Alright, first things first: Would you like to install pi-hole after we set up WireGuard?
-According to the developers, 'the Pi-hole is a DNS sinkhole that protects your
-devices from unwanted content, without installing any client-side software.'"
-read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" pihole_choice
-if [[ "${pihole_choice^^}" == "Y" ]]; then
-	echo "Great, would you also like to setup Unbound to allow pi-hole to act as a 'recursive"
-	echo "DNS server'? For info on what that is, please refer to the official pi-hole docs"
-	echo "at https://docs.pi-hole.net/guides/unbound/"
-	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" unb_choice
-	
-	# Add unbound choice to reboot_helper
-	echo "unb_choice $unb_choice" >> $HOME/reboot_helper.txt 
-	
-	if [[ "${unb_choice^^}" != "Y" && "${unb_choice^^}" != "N" ]]; then
-		echo "$error_msg"
-		exit 1
+# Check if pi-hole is already installed, if not, ask to install it and Unbound
+if [[ ! -f $DIR/pihole_checkpoint.txt ]]; then
+	echo "First things first: Would you like to install pi-hole after we set up WireGuard?
+	According to the developers, 'the Pi-hole is a DNS sinkhole that protects your
+	devices from unwanted content, without installing any client-side software.'"
+	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" pihole_choice
+	if [[ "${pihole_choice^^}" == "Y"]]; then
+		echo "Great, would you also like to setup Unbound to allow pi-hole to act as a 'recursive"
+		echo "DNS server'? For info on what that is, please refer to the official pi-hole docs"
+		echo "at https://docs.pi-hole.net/guides/unbound/"
+		read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" unbound_choice
+		if [[ "${unbound_choice^^}" != "Y" && "${unbound_choice^^}" != "N" ]]; then
+			echo "$error_msg"
+			exit 1
+		fi
+
+		# Add unbound choice to reboot_helper
+		echo "unbound_choice $unbound_choice" >> $HOME/reboot_helper.txt 
+		
+		echo "Awesome, I'll keep that in mind for later! Let's go ahead and install Pi-Hole now,"
+		echo "and we'll come back to Unbound after Wireguard is installed."
+		sleep 2
+		echo "Ready? Let's do this!"
+		sleep 1
+		echo $divider_line
+		sleep 1
+		. "$DIR/configure_pihole_unbound.sh" pihole
+	else
+		echo "Okay, we won't set up pi-hole. Feel free to do so yourself later!"
 	fi
-	echo "Awesome, I'll keep that in mind for later!"
 fi
 
 echo "$divider_line"
@@ -95,33 +105,33 @@ echo "$divider_line"
 # Find user's private and public IP address + network interface
 # credit to angristan@github for the private IPv4 address and interface calculations
 pi_intrfc="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
-pi_prv_ip4=$(ip addr | grep 'inet' | grep -v inet6 | grep -vE '127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
-pi_prv_ip6=$(ip -6 addr show dev $pi_intrfc | grep 'fe80' | awk '{print $2}')
+
+# TODO Check if private IPs and gateway are needed for anything
+#pi_prv_ip4=$(ip addr | grep 'inet' | grep -v inet6 | grep -vE '127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+#pi_prv_ip6=$(ip -6 addr show dev $pi_intrfc | grep 'fe80' | awk '{print $2}')
 pi_pub_ip6=$(ip -6 addr show dev $pi_intrfc | grep 'inet6*' | awk '{print $2}' | sed '1!d' | cut -f1 -d"/")
 pi_pub_ip4=$(host -4 myip.opendns.com resolver1.opendns.com | grep "myip.opendns.com has" | awk '{print $4}')
-pi_gateway=$(ip r | grep default | awk '{print $3}')
+#pi_gateway=$(ip r | grep default | awk '{print $3}')
 
-echo "I have calculated your server's IPv4/IPv6 address, but you may change them now if they are incorrect for some reason.
-NOTE: This is different from the server's WireGuard address that we'll assign manually later. If everything looks OK, just hit 'enter'
-"
-read -rp "$(echo -e $t_readin"Replace with your server's IPv4 address and subnet (or just press enter): "$t_reset)" -e -i "$pi_prv_ip4" pi_prv_ip4
-echo " "
+#echo "I have calculated your server's IPv4/IPv6 address, but you may change them now if they are incorrect for some reason.
+#NOTE: This is different from the server's WireGuard address that we'll assign manually later. If everything looks OK, just hit 'enter'
+#"
+#read -rp "$(echo -e $t_readin"Replace with your server's IPv4 address (or just press enter): "$t_reset)" -e -i "$pi_prv_ip4" pi_prv_ip4
+#echo " "
 
-# Grab ipv6_choice from reboot_helper
-ipv6_choice="$(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
-if [[ "${ipv6_choice^^}" == "Y" ]]; then
-	echo "Since you chose to use IPv6, let's make sure that I have the right address for that as well."
-	read -rp "$(echo -e $t_readin"Replace with your public IPv6 address and subnet (or just press enter): "$t_reset)" -e -i "$pi_prv_ip6" pi_prv_ip6
-elif [[ "${ipv6_choice^^}" == "N" ]]; then
-	echo "Alright, moving on then!"
-fi
+#if [[ "${ipv6_choice^^}" == "Y" ]]; then
+#	echo "Since you chose to use IPv6, let's make sure that I have the right address for that as well."
+#	read -rp "$(echo -e $t_readin"Replace with your public IPv6 address and subnet (or just press enter): "$t_reset)" -e -i "$pi_prv_ip6" pi_prv_ip6
+#elif [[ "${ipv6_choice^^}" == "N" ]]; then
+#	echo "Alright, moving on then!"
+#fi
 
 # Add variables to reboot_helper
-echo "pi_prv_ip4 $pi_prv_ip4" >> $HOME/reboot_helper.txt 
-echo "pi_prv_ip6 $pi_prv_ip6" >> $HOME/reboot_helper.txt 
+#echo "pi_prv_ip4 $pi_prv_ip4" >> $HOME/reboot_helper.txt 
+#echo "pi_prv_ip6 $pi_prv_ip6" >> $HOME/reboot_helper.txt 
+#echo "pi_gateway $pi_gateway" >> $HOME/reboot_helper.txt 
 echo "pi_intrfc $pi_intrfc" >> $HOME/reboot_helper.txt 
 echo "pi_pub_ip4 $pi_pub_ip4" >> $HOME/reboot_helper.txt 
-echo "pi_gateway $pi_gateway" >> $HOME/reboot_helper.txt 
 
 echo "$divider_line"
 
@@ -147,9 +157,9 @@ fi
 
 # Add int_addr fields to reboot_helper 
 echo "int_addr[0] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
-echo "int_addr[1] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
-echo "int_addr[2] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
-echo "int_addr[3] ${int_addr[0]}" >> $HOME/reboot_helper.txt 
+echo "int_addr[1] ${int_addr[1]}" >> $HOME/reboot_helper.txt 
+echo "int_addr[2] ${int_addr[2]}" >> $HOME/reboot_helper.txt 
+echo "int_addr[3] ${int_addr[3]}" >> $HOME/reboot_helper.txt 
 
 echo "$divider_line"
 
@@ -247,7 +257,7 @@ sleep 4
 echo "Okay, now lets move forward."
 sleep 1
 server_allowed_ips=()
-read -rp "$(echo -e $t_readin"Enter the server's allowed ipv4 address here: "$t_reset)" -e -i "10.24.42.2/24" server_allowed_ipv4
+read -rp "$(echo -e $t_readin"Enter the server's allowed ipv4 address here: "$t_reset)" -e -i "10.24.42.2/32" server_allowed_ipv4
 server_allowed_ips+=($server_allowed_ipv4)
 if [[ "${ipv6_choice^^}" == "Y" ]]; then
 	echo "Let's do the same for ipv6."
@@ -341,17 +351,17 @@ if [[ "${saved_table_choice^^}" == "Y" ]]; then
 	p_d_handle="$(sudo nft list table filter -a | grep 'iifname' | awk '{print $11}')"
 else
 	if [[ "${ipv6_choice^^}" == "Y" ]]; then
-		post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -A FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
-		post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -D FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
+		post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -A FORWARD -o $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -A FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
+		post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -D FORWARD -o $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE; ip6tables -D FORWARD -i $wg_intrfc -j ACCEPT; ip6tables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
 	else
-		post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
-		post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
+		post_up_tables="iptables -A FORWARD -i $wg_intrfc -j ACCEPT; iptables -A FORWARD -o $wg_intrfc -j ACCEPT; iptables -t nat -A POSTROUTING -o $pi_intrfc -j MASQUERADE"
+		post_down_tables="iptables -D FORWARD -i $wg_intrfc -j ACCEPT; iptables -D FORWARD -o $wg_intrfc -j ACCEPT; iptables -t nat -D POSTROUTING -o $pi_intrfc -j MASQUERADE"
 	fi
 fi
 
 echo "$divider_line
 Okay, I'm now going to create your server and client config files!
-They will be located in /etc/wireguard - you will need to be sudo to open them
+They will be located in /etc/wireguard - you will need to use sudo to open them
 "
 
 # TODO: allow for multiple clients to be added
@@ -363,7 +373,6 @@ sudo cat <<EOF> /etc/wireguard/$wg_intrfc.conf
 Address = ${int_addr[0]}/${int_addr[1]}, ${int_addr[2]}/${int_addr[3]}
 SaveConfig = $save_conf
 ListenPort = $listen_port
-DNS = ${dns_addr[1]}
 
 PrivateKey = $serv_priv_key
 
@@ -378,6 +387,7 @@ AllowedIPs = ${server_allowed_ips[0]}, ${server_allowed_ips[1]}
 EOF
 
 	# Setup client1.conf for IPv6
+	# TODO try using endpoint IP for DNS
 	sudo cat <<EOF> /etc/wireguard/$client_name.conf
 [Interface]
 # Client1
@@ -400,7 +410,6 @@ else
 Address = ${int_addr[0]}/${int_addr[1]}
 SaveConfig = $save_conf
 ListenPort = $listen_port
-DNS = ${dns_addr[0]}
 
 PrivateKey = $serv_priv_key
 
@@ -419,10 +428,10 @@ EOF
 [Interface]
 Address = ${server_allowed_ips[0]}
 ListenPort = $listen_port
+DNS = ${dns_addr[0]}
 
 PrivateKey = $client_priv_key
 
-DNS = ${dns_addr[0]}
 
 [Peer]
 # Server1
@@ -454,20 +463,22 @@ Generally, 25 seconds is enough and what is recommended by most people.
 Would you like more detailed information on what 'PersistentKeepAlive' does?"
 read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" pka_more_info_choice
 if [[ "${pka_more_info_choice^^}" == "Y" ]]; then
-	echo "The following is paraphrasing WireGuard's official docs @ https://www.wireguard.com/quickstart/:
+	echo -e "The following is paraphrasing WireGuard's official docs @ https://www.wireguard.com/quickstart/:
 A primary goal of WireGuard is to be as stealthy and silent as possible. This is overall a good thing,
 but due to reason's I'll explain, it can be problematic for those who have peers behind a stateful
 firewall or NAT (router). Think of WireGuard as being one of those 'lazy texters' that we all 
-know and love - generally, WireGuard will only transmit data ($t_bold)after($t_reset) it has received 
-a request from a peer. So imagine your lazy friend that only replies once you contact them first. They're
+know - generally, WireGuard will only transmit data $t_bold"after"$t_reset it has received 
+a request from a peer. So imagine communicating with your lazy friend that only replies after you contact them first. They're
 still a good friend and you can still trust them, they just don't like texting so they do it as little
-as possible. Okay, maybe not the best analogy, but hopefully you get the overall picture. 
+as possible. 
+
+Okay, maybe not the best analogy, but hopefully you get the overall picture. 
 So what does this have to do with PersistentKeepAlive? Well, that setting will tell the peer to send
-data known as 'keepalive packets' to the WireGuard server that basically just tells it 
-'Hey, I'm here, don't forget about me!' By setting it to 25, we are telling the peer to remind WireGuard
+data known as \"keepalive packets\" to the WireGuard server that basically just tells it 
+\"Hey, I'm here, don't forget about me!\" By setting it to 25, we are telling the peer to remind WireGuard
 that they are still active every 25 seconds. As WireGuard puts it, you should only need it if you are 
-'behind NAT or a firewall and you want to receive incoming connections long after network traffic has 
-gone silent, this option will keep the 'connection' open in the eyes of NAT.'"
+\"$t_bold"behind NAT or a firewall and you want to receive incoming connections long after network traffic has 
+gone silent, this option will keep the 'connection' open in the eyes of NAT."$t_reset\""
 
 	echo "$divider_line"
 	read -rp "$(echo -e $t_readin"Whew! Okay, that was a lot. Press enter whenever you're ready to move on: "$t_reset)" -e -i "" pka_move_forward
@@ -492,22 +503,13 @@ fi
 
 echo "$divider_line
 Okay, I've created the config files for your server and first client!
-Now would you like me to set up some additional firewall rules?
-If yes, I'd suggest reading over the code to make sure they work in your situation.
-If you'd like to manage them yourself, just choose no."
-read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" add_fw_choice
-if [[ "${add_fw_choice^^}" == "Y" ]]; then
-	. "$DIR/configure_firewall.sh" phase2
-elif [[ "${add_fw_choice^^}" == "N" ]]; then
-	echo "Alright, lets move on then!"
-else
-	echo "$error_msg"
-	exit 1
-fi
+"
+
+sleep 2
 
 echo "$divider_line"
 
-echo -e  $t_bold"We're done setting up WireGuard on the server-side, so lets start it up!
+echo -e $t_bold"We're done setting up WireGuard on the server-side, so lets start it up!
 (I'll pause for a few seconds in case you want to read the output from starting the server)
 "$t_reset
 
@@ -545,7 +547,7 @@ if [[ "${auto_choice^^}" == "Y" ]]; then
 	sudo sh -c "systemctl start wg-quick@$wg_intrfc"
 elif [[ "${auto_choice^^}" == "Y" ]]; then
 	echo "Okay, if you want to enable auto-start at another time, the command is: "
-	echo "'sudo systemctl enable wg-quick@wg0'"
+	echo "\"sudo systemctl enable wg-quick@$wg_intrfc\""
 else
 	echo "$error_msg"
 	exit 1
@@ -557,201 +559,6 @@ sudo chown -R root:root /etc/wireguard/wg0.conf
 sudo chmod -R og-rwx /etc/wireguard/wg0.conf
 sudo chmod 700 /etc/wireguard
 
-# Install pi-hole
-install_pihole(){
-	echo "Alright, let's start setting up pi-hole. First I'm going to install resolvconf, and then
-I'll explain your next steps! $divider_line"
-	sleep 2
-	# Install resolvconf before pi-hole
-	sudo apt install resolvconf -y
-
-	echo -e $t_important"---------IMPORTANT!! PLEASE READ!!---------"$t_reset
-	echo -e $t_important"---------IMPORTANT!! PLEASE READ!!---------"$t_reset
-	echo "You will now be redirected the pi-hole installer. Please take note of the following"
-	echo "information, as you'll be required to manually input values. I'll take you through the 9 steps now:"
-	echo -e "$t_bold"Step 1:"$t_reset Press '<OK>' until you reach the 'Choose An Interface' screen."
-	echo "	- Select the WireGuard interface you chose: $wg_intrfc"
-	echo -e "$t_bold"Step 2:"$t_reset Set the Upstream DNS Provider to whomever you want, if you plan on"
-	echo "using Unbound, this setting doesn't matter much, so just choose anything."
-	echo  -e "$t_bold"Step 3:"$t_reset Select the 'Block Lists' to enable - I suggest enabling them all."
-	echo  -e "$t_bold"Step 4:"$t_reset Choose IPv4 or both if you chose to use IPv6 earlier."
-	echo  -e "$t_bold"Step 5:"$t_reset Static addresses should be: "
-	echo "	- ${int_addr[0]}/${int_addr[1]} for IPv4 or ${int_addr[2]}/${int_addr[3]} for IPv6."
-	echo "	- Gateway is the same address as above, but with no subnet value (i.e. ${int_addr[0]}"
-	echo  -e "$t_bold"Step 6:"$t_reset I highly recommend installing the web admin interface!"
-	echo  -e "$t_bold"Step 7:"$t_reset If you don't already have a webserver installed (most people won't)"
-	echo "Then I recommend installing the web server (lighttpd) as well."
-	echo  -e "$t_bold"Step 8:"$t_reset Again, go with what pi-hole recommends and turn logging on, unless"
-	echo "you have a specific reason not to."
-	echo  -e "$t_bold"Step 9:"$t_reset If you want less clutter in your logs you can choose one of these options, "
-	echo "But to get the most out of the pi-hole I think it's best to Show Everything."
-	echo "And thats it for pi-hole!"
-	echo "----------------------------------------------------------------------------------------------------"
-	echo "NOTE: This installation method uses the command: # sudo curl -ssL https://instal.pi-hole.net | bash"
-    echo "It is generally bad practice to curl into bash, but in this case we know that"
-    echo "the script is from a reputable source. It still couldn't hurt to look over the code yourself"
-    echo "if you're concered or interested!"
-	echo -e $t_important"IMPORTANT: YOU MUST MANUALLY REBOOT ONCE PI-HOLE IS FINISHED INSTALLING"$t_reset
-	echo -e $t_important"IF AUTOLOGIN IS ENABLED, THIS SCRIPT SHOULD PICK BACK UP WHERE WE LEFT OFF"$t_reset
-	echo "I recommend screenshotting these instructions if you are using SSH, "
-	echo "Or just take a picture with your phone. Good luck and I'll see you once you're done!"
-	read -rp "$(echo -e $t_readin"Type Y whenever you're ready to start the pi-hole installation: "$t_reset)" -e -i "" p_start_choice
-	if [[ "${p_start_choice^^}" == "Y" ]]; then
-# echo '
-				 # __
-		 # _(\    |@@|
-		# (__/\__ \--/ __         See You Soon!
-		   # \___|----|  |   __
-			   # \ }{ /\ )_ / _\
-			   # /\__/\ \__O (__
-			  # (--/\--)    \__/
-			  # _)(  )(_
-			 # `---  ---`
-
-# '
-		# Create checkpoint file
-		echo "pi-hole checkpoint" > $HOME/pihole_checkpoint.txt
-		sleep 3
-		sudo curl -ssL https://install.pi-hole.net | bash
-	else
-		echo "Okay, here is the command again to install pi-hole yourself if you choose to do so:"
-		echo "# sudo curl -ssL https://instal.pi-hole.net | bash"
-		echo "There are also plenty of resources online, some of which I will link in the references section."
-	fi
-}
-
-install_unbound() {
-	# Install unbound to setup pi-hole as a recursive DNS server
-	sudo apt install unbound
-
-	# Install current root hints file
-	echo -e $t_important"----IMPORTANT----"
-	echo -e "You will need to run the following commands every six months or so."
-	echo -e "See Pi-hole docs for more info @ https://docs.pi-hole.net/guides/unbound/"
-	echo -e "# wget -O root.hints https://www.internic.net/domain/named.root"
-	echo -e "# sudo mv root.hints /var/lib/unbound/"$t_reset
-
-	wget -O root.hints https://www.internic.net/domain/named.root
-	sudo mv root.hints /var/lib/unbound/
-
-	# Determine unbound variable values
-	if [[ "${ipv6_choice^^}" == "Y" ]]; then
-		unb_ipv6="yes"
-	else
-		unb_ipv6="no"
-	fi
-	
-	modded_ip=$(echo "${int_addr[0]}" | cut -f -3 -d'.')
-
-	# Configure Unbound
-	sudo cat <<-EOF> /etc/unbound/unbound.conf.d/pi-hole.conf
-	server:
-	    # If no logfile is specified, syslog is used
-	    # logfile: "/var/log/unbound/unbound.log"
-	    verbosity: 1
-
-	    port: 5353
-	    do-ip4: yes
-	    do-udp: yes
-	    do-tcp: yes
-
-	    # May be set to yes if you have IPv6 connectivity
-	    do-ip6: $unb_ipv6
-
-	    # Use this only when you downloaded the list of primary root servers!
-	    root-hints: "/var/lib/unbound/root.hints"
-
-	    # Respond to DNS requests on all interfaces
-	    interface: 0.0.0.0
-	    max-udp-size: 3072
-
-	    # IPs authorised to access the DNS Server
-	    access-control: 0.0.0.0/0                 refuse
-	    access-control: 127.0.0.1                 allow
-	    access-control: $modded_ip.0/24             allow
-
-	    # Hide DNS Server info
-	    hide-identity: yes
-	    hide-version: yes
-
-	    # Trust glue only if it is within the servers authority
-	    harden-glue: yes
-
-	    # Require DNSSEC data for trust-anchored zones, if such data is absent, the zone becomes BOGUS
-	    harden-dnssec-stripped: yes
-	    harden-referral-path: yes
-
-	    # Add an unwanted reply threshold to clean the cache and avoid, when possible, DNS poisoning
-	    unwanted-reply-threshold: 10000000
-
-	    # Don't use Capitalization randomization as it known to cause DNSSEC issues sometimes
-	    # see https://discourse.pi-hole.net/t/unbound-stubby-or-dnscrypt-proxy/9378 for further details
-	    use-caps-for-id: no
-
-	    # Reduce EDNS reassembly buffer size.
-	    # Suggested by the unbound man page to reduce fragmentation reassembly problems
-	    edns-buffer-size: 1472
-
-	    # TTL bounds for cache
-	    cache-min-ttl: 3600
-	    cache-max-ttl: 86400
-
-	    # Perform prefetching of close to expired message cache entries
-	    # This only applies to domains that have been frequently queried
-	    prefetch: yes
-	    prefetch-key: yes
-
-	    # One thread should be sufficient, can be increased on beefy machines.
-	    # In reality for most users running on small networks or on a single
-	    # machine it should be unnecessary to seek performance enhancement by increasing num-threads above 1.
-	    num-threads: 1
-
-	    # Ensure kernel buffer is large enough to not lose messages in traffic spikes
-	    so-rcvbuf: 1m
-
-	    # Ensure privacy of local IP ranges
-	    private-address: 192.168.0.0/16
-	    private-address: 169.254.0.0/16
-	    private-address: 172.16.0.0/12
-	    private-address: 10.0.0.0/8
-	    private-address: fd00::/8
-	    private-address: fe80::/10
-
-	EOF
-
-# Create unbound checkpoint
-echo "" > $DIR/unbound_checkpoint.txt
-
-# Reboot to finish installation
-sudo shutdown -r now
-
-}
-
-# Check if user just wants pi-hole or unbound, but not both
-if [[ "${pihole_choice^^}" == "Y" && ! -f $DIR/pihole_checkpoint.txt ]]; then
-	install_pihole
-	echo "Alright, we've installed pi-hole! Let's check to see if it works by using the 'host' command."
-	echo "First, I will run it against the server host using Pi-hole's DNS to verify that it is active,"
-	echo "And then I'll run it against 'pagead2.googlesyndication.com' to verify that ads are being served"
-	echo "By the Pi-hole. You should see the custom IP that you set earlier next to 'has address'"
-	if [[ "${saved_ipv6_choice^^}" == "Y" ]]; then
-		echo -e $t_bold"Running '# host $HOSTNAME $saved_int_addr_0"$t_reset
-		host $HOSTNAME $saved_int_addr_0
-		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
-		host pagead2.googlesyndication.com $saved_int_addr_0
-		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
-	else
-		echo -e $t_bold"Running '# host $HOSTNAME $saved_int_addr_2"$t_reset
-		host $HOSTNAME $saved_int_addr_2
-		echo -e $t_bold"Running '# host pagead2.googlesyndication.com $saved_int_addr_2"$t_reset
-		host pagead2.googlesyndication.com $saved_int_addr_2
-		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
-	fi
-fi
-
-if [[ "${saved_unb_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt]]; then
-	install_unbound
-fi
 
 # Leave configure_wireguard and create checkpoint.
 echo "" > $DIR/wg_config_checkpoint.txt

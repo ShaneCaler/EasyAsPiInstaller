@@ -12,6 +12,15 @@ fi
 # Grab necessary variables from reboot helper
 if [[ -f $HOME/reboot_helper.txt ]]; then
 	saved_firewall_choice="$(awk '/firewall_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	pi_type="$(awk '/pi_type/{print $NF}' $HOME/reboot_helper.txt)"
+	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[0]="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[1]="$(awk '/int_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[2]="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[3]="$(awk '/int_addr[3]/{print $NF}' $HOME/reboot_helper.txt)"
+	pihole_choice="$(awk '/pihole_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	unbound_choice="$(awk '/unbound_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	ipv6_choice="$(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
 fi
 
 # Create text-formatting variables
@@ -35,9 +44,13 @@ find_arch_and_install(){
 		if [[ "$pi_model" == "Zero Rev" || "$pi_model" == "Zero W" || "$pi_model" == "Model A" || "$pi_model" == "Model B" ]]; then
 			echo "Alright, from what I can tell, you are using a $pi_model Raspberry Pi device"
 			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
-			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
-			pi_type=0
-			# Call setup_for_armhf script
+			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd			
+			
+			pi_type=0		
+			# Add pi type to reboot_helper
+			echo "pi_type $pi_type" >> $HOME/reboot_helper.txt
+			
+			# Call setup_for_lowend script
 			. "$DIR/setup_for_lowend.sh"
 		elif [[ "$pi_model" == "2 Model" && "$pi_revision" != "1.2" ]]; then
 			echo "Alright, looks like you're running a Raspberry Pi Model 2 Revision 1.1, which is going to take "
@@ -46,27 +59,28 @@ find_arch_and_install(){
 			echo "$divider_line"
 			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
 			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
+			
 			pi_type=0
+			# Add pi type to reboot_helper
+			echo "pi_type $pi_type" >> $HOME/reboot_helper.txt
+			
 			# Call setup_for_lowend script
 			. "$DIR/setup_for_lowend.sh"
 		else
-			echo "Alright, looks like you have a device that runs on a modern architecture!"
+			echo "Alright, looks like you have a device that runs on modern architecture!"
 			sleep 2
 			echo "$divider_line"
 			echo "Let's install everything necessary for WireGuard, when you're ready to move on just press enter."
 			read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
+			
 			pi_type=1
+			# Add pi type to reboot_helper
+			echo "pi_type $pi_type" >> $HOME/reboot_helper.txt
+			
 			# Call setup for v1.2 and above script
 			. "$DIR/setup_for_standard.sh"
 		fi
-	fi
-	
-	# Call setup script for the second time
-	if [[ ! -f $DIR/wg_install_checkpoint2.txt && -f $DIR/wg_install_checkpoint1.txt ]]; then
-
-	fi
-	
-		
+	fi		
 }	
 	
 before_first_reboot(){
@@ -74,42 +88,55 @@ before_first_reboot(){
 	cat $DIR/welcome_text.txt
 	sleep 5
 
-	# Make sure user has autologin set through raspi-config
-	echo "$divider_line"
-	echo -e $t_important"IMPORTANT: Your device will need to reboot during the course of this installation."$t_reset
-	echo ""
-	echo -e "$t_bold"Please"$t_reset make sure that you have 'autologin' set using the command 'sudo raspi-config'
+	# Check if autologin has been enabled by raspi-config
+	is_autologin_enabled(){
+	    if [ -e /etc/systemd/system/getty@tty1.service.d/autologin.conf ] ; then
+			# stretch or buster - is there an autologin conf file?
+			return 0
+		else
+			# stretch or earlier - check the getty service symlink for autologin
+			if [ $(deb_ver) -le 9 ] && grep -q autologin /etc/systemd/system/getty.target.wants/getty@tty1.service ; then
+				return 0
+			else
+				return 1
+			fi
+		fi
+	}
+	
+	if ( !is_autologin_enabled )
+		# Make sure user has autologin set through raspi-config
+		echo "$divider_line"
+		echo -e $t_important"IMPORTANT: Your device will need to reboot during the course of this installation."$t_reset
+		echo ""
+		echo -e "$t_bold"Please"$t_reset make sure that you have 'autologin' set using the command 'sudo raspi-config'
 and navigating to 'boot options' -> 'Desktop / CLI' -> 'B2 Console Autologin'. 
 This is very important for the script to function properly (since we'll be installing new kernel headers)!
 Enabling this setting will allow the script to continue where it left off after rebooting.
-You can immediately change it back after everything is done!"
-	echo ""
+You can immediately change it back after everything is done!"	
+		echo "So, would you like to exit to set autologin through raspi-config?"
+		read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" auto_login_check
+		if [[ "${auto_login_check^^}" == "Y" ]]; then	
+			exit 0;
+		elif [[ "${auto_login_check^^}" == "N" ]]; then
+			echo "Okay, just remember, this script may not function correctly without this feature.
+You are welcome to manually log in each time if you choose not to use it though!" 
+		else
+			echo "$error_msg"
+		fi
+	fi
 	
-	# Also check for SSH, as auto-start won't be possible
-	echo -e "$t_bold"NOTE:"$t_reset if you are using SSH, you will need to manually restart the script after rebooting,
-since you won't have access to the same terminal afterwards. After rebooting, type 'cd EasyAsPiInstaller' and
-'./EasyAsPi.sh' and you should pick up where you left off."
-	echo ""
-	echo "So, are you using SSH?"
-	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" ssh_check
-	if [[ "${ssh_check^^}" == "Y" ]]; then
-		# Do nothing
-		echo "Alright, just remember the two commands to type in after rebooting! I'll let you know once the script is done."
-	elif [[ "${ssh_check^^}" == "N" ]]; then
+	echo $divider_line
+
+	# Check if using SSH
+	if pstree -p | egrep --quiet --extended-regexp ".*sshd.*\($$\)"; then
+		echo -e "$t_bold"NOTE:"$t_reset I noticed that you are using SSH - you will need to manually log in and 
+restart the script after rebooting each time, since you won't have access to the same terminal afterwards. 
+After rebooting, type 'cd EasyAsPiInstaller' and './EasyAsPi.sh' and it should pick up where you left off."
+	else
 		# We will need to reboot several times, this lets us restart the script after autologin
 		# The entries are removed once the script finishes
 		sudo sh -c "echo 'cd $DIR' >> /etc/profile"
 		sudo sh -c "echo '. $DIR/EasyAsPi.sh' >> /etc/profile"
-	fi
-	echo ""
-	echo "Would you like to exit to set autologin through raspi-config?"
-	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" auto_login_check
-	if [[ "${auto_login_check^^}" == "Y" ]]; then	
-		exit 0;
-	elif [[ "${auto_login_check^^}" == "N" ]]; then
-		printf "Okay, I must warn you though, this script won't function correctly without this feature.\nYou are welcome to modify it yourself, though!\n\n" 
-	else
-		echo "$error_msg"
 	fi
 
 	# Check if user is root
@@ -123,30 +150,30 @@ since you won't have access to the same terminal afterwards. After rebooting, ty
 	}
 
 	if ( is_root ); then
-		echo "I noticed that you're running this script as root, this is important as many of the commands
+		echo "I see that you're running this script as root, this is important as many of the commands
 required to complete this installation can only be ran by the SuperUser. If you simply ran this script using 'sudo',
-then you are ready to move on. However, if you are running this script while actively logged in as sudo (i.e. running sudo su),
-some errors or challenges may occur after restarting the device, as you will likely be logged in to you regular user account.
+then you are ready to move on. However, if you are running this script while actively logged in as sudo (i.e. running sudo su beforehand),
+some errors or challenges may occur after restarting the device, as you will likely be re-logged in to you regular user account, which has a different directory structure.
 To fix this, you can try logging into your user account and running this script with sudo, or you can Ctrl+C out of the script
 after each reboot, and manually re-run the script after logging into the SuperUser account. 
-Sorry for the confusion! I am curretntly working on a better way to handle this."
-		echo "So, if you are logged into the SuperUser account, would you like to exit and try again?"
+Sorry for the confusion! I am currently working on a better way to handle this."
+		echo "So, if you are logged into the SuperUser account, would you like to exit and try again as a regular user?"
 		read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" su_choice
 	else
-		echo "I noticed that you're running this script as a normal user."
+		echo "I see that you're running this script as a normal user."
 		sleep 1
 		echo -e $t_important"IMPORTANT: This script uses the 'sudo' command to run some commands as SuperUser."$t_reset
 		echo -e "If you have a password set for sudo, you will need to enter it for each step that requires it.
 You can either: A. Re-run this script with 'sudo', B. Temporarily disable/remove your password,
 or C. I can run the command 'sudo --validate' which will extend the sudo timeout for 15 minutes.
-Please note: Raspberry Pi's don't ship with a password for root, so you would have had to configured this on your own in the past."
-		sleep 2
-		echo "$divider_line"
+Please note: Raspberry Pi's don't ship with a password for root, so you would have had to configured this on your own."
+		sleep 1
+		echo $divider_line
 		read -rp "$(echo -e $t_readin""Please enter the option that you would like to choose, either A, B, or C: " "$t_reset)" -e -i "C" su_choice
 		if [[ "${su_choice^^}" == "A" || "${su_choice^^}" == "B" ]]; then
 			echo "Okay, I will exit now. 
 Please either: Re-run this script using sudo OR temporarily remove/disable your password and re-run."
-			exit
+			exit 1
 		elif [[ "${su_choice^^}" == "C" ]]; then
 			echo "Sounds good,I will go ahead and run 'sudo --validate' now, you'll be required to enter your password once."
 			sleep 1
@@ -161,38 +188,26 @@ Please either: Re-run this script using sudo OR temporarily remove/disable your 
 
 after_wireguard_installation(){
 	# Check that wireguard is installed
+	echo $divider_line
 	read -rp "$(echo -e $t_readin"Okay, we've rebooted. Press enter to check if wireguard is still loaded: "$t_reset)" -e -i "" mv_fwd
 	sudo lsmod | grep wireguard
-	echo "$divider_line"
+	
+	echo $divider_line
+	
 	if [ $? -eq 0 ]; then
-		echo "Looking good!"
+		echo "Looking good, the command to check for wireguard returned successful!"
 	else
 		echo "Something went wrong, wireguard isn't loading after rebooting."
 		echo "Before troubleshooting online, try editing the file /etc/mkinicpio.conf and searching "
 		echo "for the line that reads 'MODULES=(...)'. Make sure it is uncommented and add 'wireguard'" 
 		echo "to the list (no quotes), which is seperated by spaces if there are already entries. "
 		echo "Thanks to Juhzuri from Reddit for the tip!"
-		sleep 10 # temporary
-		#exit 1
-	fi
-
-	echo "Would you like me to handle firewall settings? Choose 'No' if you'd prefer to manage them yourself."
-	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" firewall_choice
-	
-	# Add firewall_choice to reboot_helper
-	echo "firewall_choice $firewall_choice" >> $HOME/reboot_helper.txt 
-	
-	if [[ "${firewall_choice^^}" == "Y" ]]; then	
-		# Pre-WireGuard firewall configuration
-		. "$DIR/configure_firewall.sh" phase1
-	elif [[ "${firewall_choice^^}" == "N" ]]; then
-		echo "Okay, I won't change any of your firewall settings. Just be sure to do them yourself ASAP!"
-		echo "Otherwise, your server will be insecure and vulnerable to hackers!"
-		. "$DIR/configure_firewall.sh" phase1	
-	else
-		echo "$error_msg"
+		exit 1
 	fi
 	
+	# Call phase1 of the configure_firewall script
+	. "$DIR/configure_firewall.sh" phase1
+		
 	# Move on to Wireguard configuration
 	echo "$divider_line"
 	echo "Alright, now lets begin configuring Wireguard!"
@@ -204,41 +219,71 @@ after_wireguard_installation(){
 
 after_wireguard_configuration(){
 	# Post-WireGuard firewall configuration
-	if [[ "${saved_firewall_choice^^}" == "Y" ]]; then
+	
+	if [[ "${saved_firewall_choice^^}" == "Y" && ! -f $DIR/firewall_checkpoint_p2]]; then
 		echo "$divider_line"
 		echo "We will now begin phase 2 of firewall configuration!"
 		echo "$divider_line"
 		. "$DIR/configure_firewall.sh" phase2
 	fi
-
-	# Grab values from reboot helper
-	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
-	int_addr[0]="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
-	int_addr[1]="$(awk '/int_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
-	int_addr[2]="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
-	int_addr[3]="$(awk '/int_addr[3]/{print $NF}' $HOME/reboot_helper.txt)"
+	
+	# Check if user wants pi-hole
+	#if [[ "${pihole_choice^^}" == "Y" && ! -f $DIR/pihole_checkpoint.txt ]]; then
+	#	. "$DIR/configure_pihole_unbound.sh" pihole
+	#fi
+	
+	# Check if pi-hole installed correctly
+	if [[ -f $DIR/pihole_checkpoint ]]; then
+		echo "Alright, we've installed pi-hole! Let's check to see if it works by using the 'host' command."
+		echo "First, I will run it against the server host using Pi-hole's DNS to verify that it is active,"
+		echo "And then I'll run it against 'pagead2.googlesyndication.com' to verify that ads are being served"
+		echo "By the Pi-hole. You should see the custom IP that you set earlier next to 'has address'"
+		if [[ "${ipv6_choice^^}" == "Y" ]]; then
+			echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[0]}"$t_reset
+			host $HOSTNAME ${int_addr[0]}
+			echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
+			host pagead2.googlesyndication.com ${int_addr[0]}
+			read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
+		else
+			echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[2]}"$t_reset
+			host $HOSTNAME ${int_addr[2]}
+			echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
+			host pagead2.googlesyndication.com ${int_addr[2]}
+			read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
+		fi
+	fi
+	
+	# Check if user wants unbound
+	if [[ "${unbound_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt]]; then
+		. "$DIR/configure_pihole_unbound.sh" unbound
+	fi
 
 	if [[ -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
 		# Done, with pihole and unbound installed
 		echo "Done! Now I'll start Unbound and use the 'dig pi-hole.net @127.0.0.1 -p 5353'"
 		echo "command to check if it's working. I'll run this three times with different options. "
 		echo "For the first, the 'status' parameter should be equal to 'NOERROR'. This verifies that DNS is working."
-		echo "I'll wait for your input at the end so you can have time to review the results."
+		echo "I'll wait for your input at the end so you can have time to review the results.
+		"
 		sleep 3
 		sudo service unbound start
 		# need timeout?
 		dig pi-hole.net @127.0.0.1 -p 5353
 		sleep 2
-		echo "Now, this next test should show 'SERVFAIL' for the 'status' parameter."
+		echo "
+		Now, this next test should show 'SERVFAIL' for the 'status' parameter."
 		echo "This verifies that DNSSEC is established, as we are running the dig command"
 		echo "against 'sigfail.verteiltesysteme.net' which replicates a website that has a failed signature."
-		echo "Note: This method of DNSSEC test validation is provided by: https://dnssec.vs.uni-due.de"
+		echo "Note: This method of DNSSEC test validation is provided by: https://dnssec.vs.uni-due.de
+		"
 		sleep 3
 		dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5353
 		sleep 2
-		echo "Finally, just to make sure that everything's working, we'll run dig against "
+		echo "
+		Finally, just to make sure that everything's working, we'll run dig against "
 		echo "the domain 'sigok.verteiltesysteme.net', which as you can guess should return"
-		echo "the status value of 'NOERROR'"
+		echo "the status value of 'NOERROR'
+		"
 		sleep 3
 		dig sigok.verteiltesysteme.net @127.0.0.1 -p 5353
 		sleep 2
@@ -268,10 +313,9 @@ after_wireguard_configuration(){
 		# Done - not sure what happened here?
 	fi
 
-
 	# Remove reboot files
 	cd $DIR
-	rm wg_install_checkpoint1.txt wg_install_checkpoint2.txt wg_config_checkpoint.txt pihole_checkpoint.txt unbound_checkpoint.txt firewall_checkpoint_p1.txt firewall_checkpoint_p2.txt
+	rm $HOME/reboot_helper.txt wg_install_checkpoint1.txt wg_install_checkpoint2.txt wg_config_checkpoint.txt pihole_checkpoint.txt unbound_checkpoint.txt firewall_checkpoint_p1.txt firewall_checkpoint_p2.txt
 	sudo sh -c "sed -i '/EasyAsPi.sh/d' /etc/profile"
 	sudo sh -c "sed -i '/EasyAsPiInstaller/d' /etc/profile"
 
@@ -281,6 +325,7 @@ after_wireguard_configuration(){
 
 
 # Execute functions 
+
 # Check if this is the first time being run
 if [[ ! -f $HOME/reboot_helper.txt ]]; then
 	# If its before first reboot, set DIR and place it in reboot_helper.txt
@@ -296,9 +341,10 @@ elif [[ -f $HOME/reboot_helper.txt ]]; then
 	# Find what checkpoint we are at
 	if [[ -f $DIR/wg_install_checkpoint1.txt && ! -f $DIR/wg_install_checkpoint2.txt ]]; then
 		# If we are at checkpoint 1 for wireguard installation, run setup script again
+		# TODO remove read to make this automatic		
 		echo "Alright, we're back from the first reboot. Ready to continue?"
 		read -rp "$(echo -e $t_readin"Press enter to begin WireGuard installation."$t_reset)" -e -i "" mv_fwd
-		if [[ pi_type == 0 ]]; then	
+		if [[ $pi_type == 0 ]]; then	
 			. "$DIR/setup_for_lowend.sh"
 		else
 			. "$DIR/setup_for_standard.sh"
