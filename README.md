@@ -9,10 +9,9 @@ NOTE: This is still a work in progress and is by no means stable. Use/modify at 
 In the GUI, navigate to the following setting and enable autologin:
 --> 'Boot Options' --> 'B1: Desktop / CLI' --> 'B2 Console Autologin' --> 'OK' --> Close raspi-config
 ```
-2. As mentioned in the script, several commands require the use of 'sudo', so you can choose to run the
-script after typing 'sudo su' or let the script manually run the commands for you. Note that if you use a password, 
-it will require you to enter it during the steps that require elevated permission. 
-The script will ask if you want to run 'sudo --validate' to temporarily disable (for 15 minutes) the need for a password.
+2. As mentioned in the script, several commands require administrative priviledges, so you can choose to run the
+script with "sudo" before if you don't want to enter your password each time a command runs.
+The script will alternatively ask to run 'sudo --validate' which will temporarily disable (for 15 minutes) the need for a password.
 3. Install git so you can clone this repo
 
 `sudo apt-get install git -y`
@@ -26,7 +25,7 @@ There will be a lot, but that's just because I wanted to offer the ability to cu
 If you have any issues, refer back to here in the troubleshooting section or open up an issue and I'll
 try to help out!
 
-`./EasyAsPi.sh`
+`sudo ./EasyAsPi.sh`
 
 ## Resources/References:
 

@@ -5,14 +5,6 @@
 echo ""
 sleep 3
 before_reboot() {
-	echo -e "$t_important"IMPORTANT:"$t_reset As mentioned before, your device will reboot once this script finishes, 
-please make sure that you have 'autologin' set using the command 'sudo raspi-config'
-and navigating to 'boot options'. You can change it back after everything is done!"
-	read -rp "$(echo -e $t_readin"Would you like to exit to change this setting? Y for yes, N for no: "$t_reset)" -e -i "N" exit_choice
-	if [[ "${exit_choice^^}" == "Y" ]]; then
-		echo "Okay, just rerun the script and make your way back here!"
-		exit
-	fi
 	echo ""
 	echo "Okay, I'm about to install WireGuard for your device. After you press enter, I will
 install several necessary packages, run an update & upgrade, clone the WireGuard repos,
@@ -57,7 +49,7 @@ $divider_line"
 Executing 'sudo make -C $HOME/wireguard-linux-compat/src install'
 $divider_line"
 
-	sudo sh -c "$HOME/make -C wireguard-linux-compat/src install"
+	sudo sh -c "make -C $HOME/wireguard-linux-compat/src install"
 
 	# Compile and install the wg tool
 	echo "
@@ -67,7 +59,7 @@ $divider_line"
 	make -C $HOME/wireguard-tools/src -j$(nproc)
 
 	echo "
-Executing 'sudo $HOME/make -C wireguard-tools/src install'
+Executing 'sudo make -C $HOME/wireguard-tools/src install'
 $divider_line"
 
 	sudo sh -c "make -C $HOME/wireguard-tools/src install"

@@ -1,12 +1,12 @@
 
 if [[ -f $HOME/reboot_helper.txt ]]; then
+	DIR="$(awk '/DIR/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[0]="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[1]="$(awk '/int_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[2]="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[3]="$(awk '/int_addr[3]/{print $NF}' $HOME/reboot_helper.txt)"
 	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
 	ipv6_choice="(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
-
 	pi_intrfc="$(awk '/pi_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
 	listen_port="$(awk '/listen_port/{print $NF}' $HOME/reboot_helper.txt)"
 	modded_ip="$(awk '/modded_ip/{print $NF}' $HOME/reboot_helper.txt)"
@@ -67,7 +67,7 @@ I'll explain your next steps! $divider_line"
 
 # '
 		# Create checkpoint file
-		echo "pi-hole checkpoint" > $HOME/pihole_checkpoint.txt
+		echo "pi-hole checkpoint" > $DIR/pihole_checkpoint.txt
 		sleep 3
 		sudo curl -ssL https://install.pi-hole.net | bash
 	else
@@ -88,7 +88,7 @@ install_unbound() {
 	echo -e "# wget -O root.hints https://www.internic.net/domain/named.root"
 	echo -e "# sudo mv root.hints /var/lib/unbound/"$t_reset
 
-	wget -O root.hints https://www.internic.net/domain/named.root
+	sudo wget -O root.hints https://www.internic.net/domain/named.root
 	sudo mv root.hints /var/lib/unbound/
 
 	# Determine unbound variable values
@@ -98,84 +98,131 @@ install_unbound() {
 		unb_ipv6="no"
 	fi
 	
-	modded_ip=$(echo "${int_addr[0]}" | cut -f -3 -d'.')
-
-	# Configure Unbound
-	sudo cat <<EOF> /etc/unbound/unbound.conf.d/pi-hole.conf
+	pi_prv_ip4=$(ip addr | grep 'inet' | grep -v inet6 | grep -vE '127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+	modded_pi_prv_ip4=$(echo "${pi_prv_ip4}" | cut -f -3 -d'.')
+	modded_wg_ip4=$(echo "${int_addr[0]}" | cut -f -3 -d'.')
+	
+	# Configure Unbound - credit to Github user notasausage 
+	# for many of the non-default server configurations
+	sudo sh -c "cat <<EOF> /etc/unbound/unbound.conf.d/pi-hole.conf
 server:
-	# If no logfile is specified, syslog is used
-	# logfile: "/var/log/unbound/unbound.log"
-	verbosity: 0
+    # If no logfile is specified, syslog is used
+    # logfile: "/var/log/unbound/unbound.log"
+    verbosity: 1
 
-	port: 5353
-	do-ip4: yes
-	do-udp: yes
-	do-tcp: yes
+	# Default port to answer queries from is 53, 
+	# but we're going to use 5353. If you change this,
+	# make sure to use this port number in your pi-hole
+	# admin dashboard, as explained in the Github readme.
+    port: 5353
+	
+    do-ip4: yes
+    do-udp: yes
+    do-tcp: yes
 
-	# May be set to yes if you have IPv6 connectivity
-	do-ip6: $unb_ipv6
+    # May be set to yes if you have IPv6 connectivity
+    do-ip6: $unb_ipv6
 
-	# Use this only when you downloaded the list of primary root servers!
-	root-hints: "/var/lib/unbound/root.hints"
+    # Use this only when you downloaded the list of primary root servers!
+    root-hints: "/var/lib/unbound/root.hints"
+	
+	# 0.0.0.0@53 and ::0@53 allows the server to 
+	# respond to DNS requests on all available interfaces over port 53.
+	# Default is to listen to localhost (127.0.0.1 and ::1)
+	interface: 0.0.0.0@53
+	interface: ::0@53
+	
+	# Hide DNS Server info, default is no.
+	# Server will not answer any id.server, hostname.bind, 
+	# version.server, and version.bind queries if both are 'yes'
+	hide-identity: yes
+	hide-version: yes
 
-	# Respond to DNS requests on all interfaces
-	#interface: 0.0.0.0
-	#max-udp-size: 3072
+    # Trust glue only if it is within the servers authority
+    harden-glue: yes
 
-	# IPs authorised to access the DNS Server
-	#access-control: 0.0.0.0/0                 refuse
-	#access-control: 127.0.0.1                 allow
-	#access-control: $modded_ip.0/24             allow
-
-	# Hide DNS Server info
-	#hide-identity: yes
-	#hide-version: yes
-
-	# Trust glue only if it is within the servers authority
-	harden-glue: yes
-
-	# Require DNSSEC data for trust-anchored zones, if such data is absent, the zone becomes BOGUS
+    # Require DNSSEC data for trust-anchored zones, if such data is absent, the zone becomes BOGUS
 	harden-dnssec-stripped: yes
-	#harden-referral-path: yes
+	
+	# Burdens the authority servers, not RFC standard, and could lead to performance problems
+	harden-referral-path: no
 
+	# Harden against algorithm downgrade when multiple algorithms
+	# are advertised in the DS record. If no, allows for the weakest
+	# algorithm to validate the zone. Default is no.
+	harden-algo-downgrade: yes
+	
+	# Harden against questionably large queries
+	harden-large-queries: yes
+	
 	# Add an unwanted reply threshold to clean the cache and avoid, when possible, DNS poisoning
-	#unwanted-reply-threshold: 10000000
+	# Default is 0, number supplied was suggested in example config.
+	unwanted-reply-threshold: 10000000
 
-	# Don't use Capitalization randomization as it known to cause DNSSEC issues sometimes
-	# see https://discourse.pi-hole.net/t/unbound-stubby-or-dnscrypt-proxy/9378 for further details
-	use-caps-for-id: no
+    # Don't use Capitalization randomization as it known to cause DNSSEC issues sometimes
+    # see https://discourse.pi-hole.net/t/unbound-stubby-or-dnscrypt-proxy/9378 for further details
+    use-caps-for-id: no
 
-	# Reduce EDNS reassembly buffer size.
-	# Suggested by the unbound man page to reduce fragmentation reassembly problems
-	edns-buffer-size: 1472
+    # Reduce EDNS reassembly buffer size, default is 4096
+    # Suggested by the unbound man page to reduce fragmentation (timeout) problems
+    edns-buffer-size: 1472
 
-	# TTL bounds for cache
-	#cache-min-ttl: 3600
-	#cache-max-ttl: 86400
+    # Perform prefetching of close to expired message cache entries
+    # This only applies to domains that have been frequently queried
+    prefetch: yes
+	
+	# Fetch the DNSKEYs earlier in the validation process, which lowers the latency of requests
+	# but also uses a little more CPU (performs key lookups adjacent to normal lookups)
+	# Default is no. 
+	prefetch-key: yes
+	
+	# Time To Live (in seconds) for DNS cache. Set cache-min-ttl to 0 remove caching (default).
+	# Max cache default is 86400 (1 day).
+	cache-min-ttl: 3600
+	cache-max-ttl: 86400
+	
+	# Use about 2x more for rrset cache, 
+	# total memory use is about 2-2.5x total cache size
+	# Default is 4m/4m
+	msg-cache-size: 8m
+	rrset-cache-size: 16m
 
-	# Perform prefetching of close to expired message cache entries
-	# This only applies to domains that have been frequently queried
-	prefetch: yes
-	#prefetch-key: yes
+	# Default is 1 (disabled), which is fine for most machines.
+	# You may increase this to create more threads if your device is capable.
+    num-threads: 1
 
-	# One thread should be sufficient, can be increased on beefy machines.
-	# In reality for most users running on small networks or on a single
-	# machine it should be unnecessary to seek performance enhancement by increasing num-threads above 1.
-	num-threads: 1
+    # Ensure kernel buffer is large enough to not lose messages in traffic spikes
+    so-rcvbuf: 1m
 
-	# Ensure kernel buffer is large enough to not lose messages in traffic spikes
-	so-rcvbuf: 1m
+	# Which client IPs are authorized to make recursive queries to this server.
+	# Deny traffic from all sources other than this device,
+	# your local private subnet and your WireGuard subnet.
+	# Default is refuse everything but localhost (127.0.0.1)
+	# See Unbound man page/example config for more information.
+	access-control: 0.0.0.0/0 refuse
+	access-control: 127.0.0.1 allow
+	access-control: $modded_pi_prv_ip4.0/24 allow
+	access-control: $modded_wg_ip4.0/24 allow
 
-	# Ensure privacy of local IP ranges
-	private-address: 192.168.0.0/16
-	private-address: 169.254.0.0/16
-	private-address: 172.16.0.0/12
-	private-address: 10.0.0.0/8
-	private-address: fd00::/8
-	private-address: fe80::/10
+    # Enforce privacy of local IP ranges - strips them away from answers
+	# Note: May cause DNSSEC to additionally mark it bogys.
+	# Protects against 'DNS Rebinding', no defaults.
+    private-address: 192.168.0.0/16
+    private-address: 169.254.0.0/16
+    private-address: 172.16.0.0/12
+    private-address: 10.0.0.0/8
+    private-address: fd00::/8
+    private-address: fe80::/10
+	
+	# Allow the domain, and its subdomains, to contain private addresses. 
+	# Create DNS record for Pi-Hole Web Interface
+	private-domain: "pi.hole"
+	local-zone: "pi.hole" static
+	local-data: "pi.hole IN A $modded_pi_prv_ip4.0/24"
 
 EOF
 
+"
 	# Create unbound checkpoint
 	echo "" > $DIR/unbound_checkpoint.txt
 

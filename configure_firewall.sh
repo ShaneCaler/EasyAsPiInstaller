@@ -20,7 +20,9 @@ if [[ $1 == "phase1" ]]; then
 	
 	# Add firewall_choice to reboot_helper
 	echo "firewall_choice $firewall_choice" >> $HOME/reboot_helper.txt 
-		
+	
+	echo $divider_line
+	
 	if [[ "${firewall_choice^^}" == "Y" ]]; then
 		# Ask to use iptables or nftables
 		echo "Would you like to upgrade your firewall from iptables (legacy) to the newer nftables?"
@@ -33,9 +35,7 @@ if [[ $1 == "phase1" ]]; then
 		# Add table_choice to reboot_helper
 		echo "table_choice $table_choice" >> $HOME/reboot_helper.txt 
 		
-		if [[ "${table_choice^^}" == "Y" ]]; then
-
-		elif [[ "${table_choice^^}" == "N" ]]; then
+		if [[ "${table_choice^^}" == "N" ]]; then
 			echo "Okay, moving on then..."
 		else
 			echo "$error_msg"
@@ -49,8 +49,7 @@ if [[ $1 == "phase1" ]]; then
 		exit 1
 	fi
 	
-	echo "$divider_line"
-	echo "I will now run the following commands to enable IPv4 and (optionally) IPv6 forwarding."
+	echo "$divider_line I will now run the following commands to enable IPv4 and (optionally) IPv6 forwarding."
 	echo "This first command does the actual forwarding: "
 	echo "	'sudo perl -pi -e 's/#{1,}?net.ipv4.ip_forward ?= ?(0|1)/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf'"
 	echo "		A similar variation will be used for IPv6"
