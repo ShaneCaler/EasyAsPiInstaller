@@ -5,14 +5,13 @@ if [[ -f $HOME/reboot_helper.txt ]]; then
 	int_addr[1]="$(awk '/int_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[2]="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
 	int_addr[3]="$(awk '/int_addr[3]/{print $NF}' $HOME/reboot_helper.txt)"
-	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
 	ipv6_choice="(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
 	pi_intrfc="$(awk '/pi_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
-	listen_port="$(awk '/listen_port/{print $NF}' $HOME/reboot_helper.txt)"
 	modded_ip="$(awk '/modded_ip/{print $NF}' $HOME/reboot_helper.txt)"
-	pka_choice="$(awk '/pka_choice/{print $NF}' $HOME/reboot_helper.txt)"
-	table_choice="(awk '/table_choice/{print $NF}' $HOME/reboot_helper.txt)"
 fi
+
+pi_prv_ip4=$(ip addr | grep 'inet' | grep -v inet6 | grep -vE '127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+pi_prv_ip6=$(ip -6 addr show dev $pi_intrfc | grep 'fe80' | awk '{print $2}')
 
 # Install pi-hole
 install_pihole(){
@@ -23,22 +22,21 @@ I'll explain your next steps! $divider_line"
 	sudo apt install resolvconf -y
 
 	echo -e $t_important"---------IMPORTANT!! PLEASE READ!!---------"$t_reset
-	echo -e $t_important"---------IMPORTANT!! PLEASE READ!!---------"$t_reset
-	echo "You will now be redirected the pi-hole installer. Please take note of the following"
-	echo "information, as you'll be required to manually input values. I'll take you through the 9 steps now:"
+	echo "You will now be redirected the pi-hole installer. You'll need to go through this process on your own,"
+	echo "but for the most part, the default choices are all suitable. I'll take you through the 9 steps now:"
 	echo -e "$t_bold"Step 1:"$t_reset Press '<OK>' until you reach the 'Choose An Interface' screen."
-	echo "	- Select the WireGuard interface you chose: $wg_intrfc"
-	echo -e "$t_bold"Step 2:"$t_reset Set the Upstream DNS Provider to whomever you want, if you plan on"
-	echo "using Unbound, this setting doesn't matter much, so just choose anything."
+	echo "	- eth0 = ethernet and wlan0 = WiFi, choose according to what your device is connected to currently. (Likely ${pi_intrfc})"
+	echo -e "$t_bold"Step 2:"$t_reset Set the Upstream DNS Provider to whomever you prefer. If you plan on"
+	echo "using Unbound, this setting doesn't matter much, so just choose anything for now."
 	echo  -e "$t_bold"Step 3:"$t_reset Select the 'Block Lists' to enable - I suggest enabling them all."
 	echo  -e "$t_bold"Step 4:"$t_reset Choose IPv4 or both if you chose to use IPv6 earlier."
-	echo  -e "$t_bold"Step 5:"$t_reset Static addresses should be: "
-	echo "	- ${int_addr[0]}/${int_addr[1]} for IPv4 or ${int_addr[2]}/${int_addr[3]} for IPv6."
-	echo "	- Gateway is the same address as above, but with no subnet value (i.e. ${int_addr[0]}"
+	echo  -e "$t_bold"Step 5:"$t_reset Static addresses should be your device's local private address: "
+	echo "	- ${pi_prv_ip4}/${int_addr[1]} for IPv4 or ${pi_prv_ip6}/${int_addr[3]} for IPv6."
+	echo "	- Gateway is likely your router's IP address. The defaults for these options should reflect this."
 	echo  -e "$t_bold"Step 6:"$t_reset I highly recommend installing the web admin interface!"
-	echo  -e "$t_bold"Step 7:"$t_reset If you don't already have a webserver installed (most people won't)"
+	echo  -e "$t_bold"Step 7:"$t_reset If you don't already have a webserver installed (most general users won't)"
 	echo "Then I recommend installing the web server (lighttpd) as well."
-	echo  -e "$t_bold"Step 8:"$t_reset Again, go with what pi-hole recommends and turn logging on, unless"
+	echo  -e "$t_bold"Step 8:"$t_reset Again, I say go with what pi-hole recommends and turn logging on, unless"
 	echo "you have a specific reason not to."
 	echo  -e "$t_bold"Step 9:"$t_reset If you want less clutter in your logs you can choose one of these options, "
 	echo "But to get the most out of the pi-hole I think it's best to Show Everything."
@@ -47,25 +45,25 @@ I'll explain your next steps! $divider_line"
 	echo "NOTE: This installation method uses the command: # sudo curl -ssL https://instal.pi-hole.net | bash"
     echo "It is generally bad practice to curl into bash, but in this case we know that"
     echo "the script is from a reputable source. It still couldn't hurt to look over the code yourself"
-    echo "if you're concered or interested!"
+    echo "if you're concered or interested! There are also alternative download methods on the pi-hole website."
 	echo -e $t_important"IMPORTANT: YOU MUST MANUALLY REBOOT ONCE PI-HOLE IS FINISHED INSTALLING"$t_reset
 	echo -e $t_important"IF AUTOLOGIN IS ENABLED, THIS SCRIPT SHOULD PICK BACK UP WHERE WE LEFT OFF"$t_reset
 	echo "I recommend screenshotting these instructions if you are using SSH, "
 	echo "Or just take a picture with your phone. Good luck and I'll see you once you're done!"
-	read -rp "$(echo -e $t_readin"Type Y whenever you're ready to start the pi-hole installation: "$t_reset)" -e -i "" p_start_choice
+	read -rp "$(echo -e $t_readin"Enter 'Y' whenever you're ready to start the pi-hole installation ('N' to do it yourself later): "$t_reset)" -e -i "" p_start_choice
 	if [[ "${p_start_choice^^}" == "Y" ]]; then
-# echo '
-				 # __
-		 # _(\    |@@|
-		# (__/\__ \--/ __         See You Soon!
-		   # \___|----|  |   __
-			   # \ }{ /\ )_ / _\
-			   # /\__/\ \__O (__
-			  # (--/\--)    \__/
-			  # _)(  )(_
-			 # `---  ---`
+ echo '
+				  __
+		  _(\    |@@|
+		 (__/\__ \--/ __         See You Soon!
+		    \___|----|  |   __
+			    \ }{ /\ )_ / _\
+			    /\__/\ \__O (__
+			   (--/\--)    \__/
+			   _)(  )(_
+			  `---  ---`
 
-# '
+ '
 		# Create checkpoint file
 		echo "pi-hole checkpoint" > $DIR/pihole_checkpoint.txt
 		sleep 3
@@ -79,15 +77,9 @@ I'll explain your next steps! $divider_line"
 
 install_unbound() {
 	# Install unbound to setup pi-hole as a recursive DNS server
-	sudo apt install unbound
+	sudo apt install unbound -y
 
 	# Install current root hints file
-	echo -e $t_important"----IMPORTANT----"
-	echo -e "You will need to run the following commands every six months or so."
-	echo -e "See Pi-hole docs for more info @ https://docs.pi-hole.net/guides/unbound/"
-	echo -e "# wget -O root.hints https://www.internic.net/domain/named.root"
-	echo -e "# sudo mv root.hints /var/lib/unbound/"$t_reset
-
 	sudo wget -O root.hints https://www.internic.net/domain/named.root
 	sudo mv root.hints /var/lib/unbound/
 
@@ -98,7 +90,6 @@ install_unbound() {
 		unb_ipv6="no"
 	fi
 	
-	pi_prv_ip4=$(ip addr | grep 'inet' | grep -v inet6 | grep -vE '127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
 	modded_pi_prv_ip4=$(echo "${pi_prv_ip4}" | cut -f -3 -d'.')
 	modded_wg_ip4=$(echo "${int_addr[0]}" | cut -f -3 -d'.')
 	

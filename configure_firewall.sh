@@ -3,52 +3,20 @@
 
 # Grab variables from reboot_helper
 if [[ -f $HOME/reboot_helper.txt ]]; then
+	DIR="$(awk '/DIR/{print $NF}' $HOME/reboot_helper.txt)"
 	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
 	pi_intrfc="$(awk '/pi_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[0]="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[1]="$(awk '/int_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
 	listen_port="$(awk '/listen_port/{print $NF}' $HOME/reboot_helper.txt)"
 	pka_choice="$(awk '/pka_choice/{print $NF}' $HOME/reboot_helper.txt)"
 	table_choice="(awk '/table_choice/{print $NF}' $HOME/reboot_helper.txt)"
 	ipv6_choice="(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	dns_port="(awk '/dns_port/{print $NF}' $HOME/reboot_helper.txt)"
 fi
 
 # Check what phase we are in
-if [[ $1 == "phase1" ]]; then
-	# Pre-configuration of firewall settings
-	echo "Would you like me to handle firewall settings? Choose 'No' if you'd prefer to manage them yourself."
-	echo "If you do choose 'No', I can't guarantee that you will achieve the expected results or level of network security."
-	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" firewall_choice
-	
-	# Add firewall_choice to reboot_helper
-	echo "firewall_choice $firewall_choice" >> $HOME/reboot_helper.txt 
-	
-	echo $divider_line
-	
-	if [[ "${firewall_choice^^}" == "Y" ]]; then
-		# Ask to use iptables or nftables
-		echo "Would you like to upgrade your firewall from iptables (legacy) to the newer nftables?"
-		echo -e "$t_important"DISCLAIMER: Upgrade at your own risk!!"$t_reset"
-		echo -e "I $t_bold"-highly-"$t_reset recommend reviewing this script's code and adjusting as needed. "
-		echo "I'm still learning firewall rules, so the following settings have been gathered from various resources "
-		echo "(which I will list in the Github readme file)."
-		read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" table_choice
-		
-		# Add table_choice to reboot_helper
-		echo "table_choice $table_choice" >> $HOME/reboot_helper.txt 
-		
-		if [[ "${table_choice^^}" == "N" ]]; then
-			echo "Okay, moving on then..."
-		else
-			echo "$error_msg"
-			exit 1
-		fi
-	elif [[ "${firewall_choice^^}" == "N" ]]; then
-		echo "Okay, I won't change any of your firewall settings (other than enabling required IPv4/IPv6 forwarding)."
-		echo "Just be sure to apply them yourself ASAP! Otherwise, your server will be insecure and vulnerable to hackers!"
-	else
-		echo "$error_msg"
-		exit 1
-	fi
-	
+if [[ $1 == "phase1" ]]; then	
 	echo "$divider_line I will now run the following commands to enable IPv4 and (optionally) IPv6 forwarding."
 	echo "This first command does the actual forwarding: "
 	echo "	'sudo perl -pi -e 's/#{1,}?net.ipv4.ip_forward ?= ?(0|1)/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf'"
@@ -56,14 +24,8 @@ if [[ $1 == "phase1" ]]; then
 	echo "Second, in order to enable IPv4/IPv6 without the need to reboot, I will run: "
 	echo "	'sudo sysctl -p' and 'sudo sh -c \"echo 1 > /proc/sys/net/ipv4/ip_forward\"'"
 	echo "		Likewise, a similar variation will be used for IPv6"
-	sleep 3
-	echo "$divider_line"
-	echo "Now, before I do anything, would you like to set up Wireguard, Pi-Hole and Unbound using IPv6?"
-	echo "This is completely optional and should only be chosen by those who know what they are doing. Choose 'N' to simply use IPv4!"
-	read -rp "$(echo -e $t_readin"Enter Y for yes, N for no (Again, only choose 'Y' if you know what you are doing!): "$t_reset)" -e -i "N" ipv6_choice
-	
-	# Add ipv6_choice to reboot_helper
-	echo "ipv6_choice $ipv6_choice" >> $HOME/reboot_helper.txt 
+	sleep 5
+	echo $divider_line
 	
 	# Enable IPv4 (and IPv6) forwarding and avoid rebooting
 	sudo perl -pi -e 's/#{1,}?net.ipv4.ip_forward ?= ?(0|1)/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf
@@ -72,9 +34,6 @@ if [[ $1 == "phase1" ]]; then
 		sudo perl -pi -e 's/#{1,}?net.ipv6.conf.all.forwarding ?= ?(0|1)/net.ipv6.conf.all.forwarding = 1/g' /etc/sysctl.conf
 	elif [[ "${ipv6_choice^^}" == "N" ]]; then
 		echo "Okay, moving on then..."
-	else
-		echo "You must type Y or N to continue, please start over"
-		exit 1
 	fi
 	
 	# Enable without rebooting
@@ -88,8 +47,6 @@ if [[ $1 == "phase1" ]]; then
 	echo "" > $DIR/firewall_checkpoint_p1.txt
 else
 	# Begin phase 2 - Post-configuration of firewall settings
-	echo "If you changed the default port that Pi-hole uses (53), then"
-	read -rp "$(echo -e $t_readin"Please enter it here (or just press enter): "$t_reset)" -e -i "53" dns_port
 	# Set up iptables rules
 	
 	# Check if user needs NAT configured
@@ -140,6 +97,7 @@ else
 	if [[ "${table_choice^^}" == "Y" ]]; then
 		echo "I will now install nftables, convert your iptables ruleset"
 		echo "and finally list the final ruleset for a moment, please wait..."
+		sleep 3
 		sudo apt install nftables -y
 		sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
 		sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy

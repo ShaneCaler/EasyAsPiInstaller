@@ -3,13 +3,30 @@
 # Grab necessary variables from reboot helper
 if [[ -f $HOME/reboot_helper.txt ]]; then
 	DIR="$(awk '/DIR/{print $NF}' $HOME/reboot_helper.txt)"
-	saved_table_choice="$(awk '/table_choice/{print $NF}' $HOME/reboot_helper.txt)"
-	saved_firewall_choice="$(awk '/firewall_choice/{print $NF}' $HOME/reboot_helper.txt)"
-	saved_int_addr_0="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
-	saved_int_addr_2="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
+	table_choice="$(awk '/table_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[0]="$(awk '/int_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[1]="$(awk '/int_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[2]="$(awk '/int_addr[2]/{print $NF}' $HOME/reboot_helper.txt)"
+	int_addr[3]="$(awk '/int_addr[3]/{print $NF}' $HOME/reboot_helper.txt)"
+	server_allowed_ips[0]="$(awk '/server_allowed_ips[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	server_allowed_ips[1]="$(awk '/server_allowed_ips[1]/{print $NF}' $HOME/reboot_helper.txt)"
+	client_allowed_ips[0]="$(awk '/client_allowed_ips[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	client_allowed_ips[1]="$(awk '/client_allowed_ips[1]/{print $NF}' $HOME/reboot_helper.txt)"
+	dns_addr[0]="$(awk '/dns_addr[0]/{print $NF}' $HOME/reboot_helper.txt)"
+	dns_addr[1]="$(awk '/dns_addr[1]/{print $NF}' $HOME/reboot_helper.txt)"
+	save_conf="$(awk '/save_conf/{print $NF}' $HOME/reboot_helper.txt)"
+	listen_port="$(awk '/listen_port/{print $NF}' $HOME/reboot_helper.txt)"=
 	ipv6_choice="$(awk '/ipv6_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	keychoice="$(awk '/keychoice/{print $NF}' $HOME/reboot_helper.txt)"
+	e_choice="$(awk '/e_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	pka_choice="$(awk '/pka_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	pka_num="$(awk '/pka_num/{print $NF}' $HOME/reboot_helper.txt)"
+	client_name="$(awk '/client_name/{print $NF}' $HOME/reboot_helper.txt)"
+	wg_intrfc="$(awk '/wg_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
+	pi_intrfc="$(awk '/pi_intrfc/{print $NF}' $HOME/reboot_helper.txt)"
+	mobile_choice="$(awk '/mobile_choice/{print $NF}' $HOME/reboot_helper.txt)"
+	auto_start_choice="$(awk '/auto_start_choice/{print $NF}' $HOME/reboot_helper.txt)"
 fi
-
 
 # Temporarily change permissions to create keys (/etc/wireguard will be changed to 700 once the script finishes)
 if [[ ! -d /etc/wireguard ]]; then
@@ -56,7 +73,6 @@ serv_pub_key=$(cat /etc/wireguard/server_public.key)
 client_priv_key=$(cat /etc/wireguard/client1_private.key)
 client_pub_key=$(cat /etc/wireguard/client1_public.key)
 
-
 # Check if user wanted to use preshared key
 if [[ "${keychoice^^}" == "Y" ]]; then
 	if [[ ! -f /etc/wireguard/preshared ]]; then
@@ -70,9 +86,8 @@ if [[ "${keychoice^^}" == "Y" ]]; then
 	fi
 fi
 
-
 # Configure post up and post down rules
-if [[ "${saved_table_choice^^}" == "Y" ]]; then
+if [[ "${table_choice^^}" == "Y" ]]; then
 	# TODO: Add nftables for post_up
 	if [[ "${ipv6_choice^^}" == "Y" ]]; then
 		post_up_tables="nft add rule ip filter FORWARD iifname \"$wg_intrfc\" counter accept; nft add rule ip nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade; nft add rule ip6 filter FORWARD iifname \"$wg_intrfc\" counter accept; nft add rule ip6 nat POSTROUTING oifname \"$pi_intrfc\" counter masquerade"
@@ -187,8 +202,6 @@ fi
 
 # Check if user wanted to use persistent-keepalive
 if [[ "${pka_choice^^}" == "Y" ]]; then
-	read -rp "$(echo -e $t_readin"What number of seconds would you like to use? "$t_reset)" -e -i "25" pka_num 
-	echo "Okay, I'll go ahead and set that for you."
 	sudo sh -c "echo 'PersistentKeepalive = $pka_num' >> /etc/wireguard/$client_name.conf"
 fi
 
@@ -226,10 +239,9 @@ fi
 
 # Restore permissions
 cd $DIR
-sudo chown -R root:root /etc/wireguard/wg0.conf
-sudo chmod -R og-rwx /etc/wireguard/wg0.conf
+sudo chown -R root:root /etc/wireguard/$wg_intrfc.conf
+sudo chmod -R og-rwx /etc/wireguard/$wg_intrfc.conf
 sudo chmod 700 /etc/wireguard
-
 
 # Leave configure_wireguard and create checkpoint.
 echo "" > $DIR/wg_config_checkpoint.txt

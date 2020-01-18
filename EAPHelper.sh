@@ -143,22 +143,76 @@ read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" pihole_choice
 # Add pihole_choice to reboot_helper to use later
 echo "pihole_choice $pihole_choice" >> $HOME/reboot_helper.txt 
 if [[ "${pihole_choice^^}" == "Y" ]]; then
-	echo "Great, would you also like to setup Unbound to allow pi-hole to act as a \"recursive"
+	echo "Awesome, one quick question and we'll continue onward:"
+	echo "By default, Pi-hole uses port 53. If you plan on using another number, then please: "
+	read -rp "$(echo -e $t_readin"Change it here (or just press enter): "$t_reset)" -e -i "53" dns_port
+	
+	# Add dns_port to reboot_helper to use later
+	echo "dns_port $dns_port" >> $HOME/reboot_helper.txt 
+	echo $divider_line
+	echo "Would you also like to setup Unbound to allow pi-hole to act as a \"recursive"
 	echo "DNS server\"? For info on what that is, please refer to the readme and/or"
 	echo "the official pi-hole docs at https://docs.pi-hole.net/guides/unbound/"
 	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" unbound_choice
-	if [[ "${unbound_choice^^}" != "Y" && "${unbound_choice^^}" != "N" ]]; then
+	if [[ "${unbound_choice^^}" == "Y" ]]; then 
+		echo -e $t_important"----IMPORTANT----"$t_reset
+		echo "You will need to run the following commands every six months or so."
+		echo "See Pi-hole docs for more info @ https://docs.pi-hole.net/guides/unbound/"
+		echo "# wget -O root.hints https://www.internic.net/domain/named.root"
+		echo "# sudo mv root.hints /var/lib/unbound/"
+		sleep 5
+	elif [[ "${unbound_choice^^}" != "Y" && "${unbound_choice^^}" != "N" ]]; then
 		echo "$error_msg"
 		exit 1
 	fi
-
 	# Add unbound_choice to reboot_helper to use later
 	echo "unbound_choice $unbound_choice" >> $HOME/reboot_helper.txt 
-	echo "Awesome, I'll keep that in mind for later!"
 else
 	echo "Okay, we won't set up pi-hole (or Unbound). Feel free to do so yourself later!"
 fi
 
+echo $divider_line
+sleep 2
+
+# Pre-configuration of firewall settings
+echo "Would you like me to handle firewall settings? Choose 'No' if you'd prefer to manage them yourself."
+echo "If you do choose 'No', I can't guarantee that you will achieve the expected results or level of network security."
+read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "Y" firewall_choice
+
+# Add firewall_choice to reboot_helper
+echo "firewall_choice $firewall_choice" >> $HOME/reboot_helper.txt 
+
+echo $divider_line
+sleep 2
+
+if [[ "${firewall_choice^^}" == "Y" ]]; then
+	# Ask to use iptables or nftables
+	echo "Would you like to upgrade your firewall from iptables (legacy) to the newer nftables?"
+	echo -e "$t_important"DISCLAIMER: Upgrade at your own risk!!"$t_reset"
+	echo -e "I $t_bold"-highly-"$t_reset recommend reviewing this script's code and adjusting as needed. "
+	echo "I'm still learning firewall rules, so the following settings have been gathered from various resources "
+	echo "(which I will list in the Github readme file)."
+	read -rp "$(echo -e $t_readin""$prompt" "$t_reset)" -e -i "N" table_choice
+	
+	# Add table_choice to reboot_helper
+	echo "table_choice $table_choice" >> $HOME/reboot_helper.txt 
+elif [[ "${firewall_choice^^}" == "N" ]]; then
+	echo "Okay, I won't change any of your firewall settings (other than enabling required IPv4/IPv6 forwarding)."
+	echo "Just be sure to apply them yourself ASAP! Otherwise, your server will be insecure and vulnerable to hackers!"
+else
+	echo "$error_msg"
+	exit 1
+fi
+echo $divider_line
+sleep 2
+
+echo "Would you like to set up Wireguard, Pi-Hole and Unbound using IPv6?"
+echo "This is completely optional and should only be chosen by those who know what they are doing. Choose 'N' to simply use IPv4!"
+read -rp "$(echo -e $t_readin"Enter Y for yes, N for no (Again, only choose 'Y' if you know what you are doing!): "$t_reset)" -e -i "N" ipv6_choice
+
+# Add ipv6_choice to reboot_helper
+echo "ipv6_choice $ipv6_choice" >> $HOME/reboot_helper.txt 
+	
 echo $divider_line
 sleep 2
 
@@ -435,6 +489,13 @@ read -rp "$(echo -e $t_readin""$prompt" "$t_reset)"  -e -i "Y" pka_choice
 
 # Add pka_choice to reboot_helper
 echo "pka_choice $pka_choice" >> $HOME/reboot_helper.txt 
+
+if [[ "${pka_choice^^}" == "Y" ]]; then
+	read -rp "$(echo -e $t_readin"What number of seconds would you like to use? "$t_reset)" -e -i "25" pka_num 
+	# Add pka_num to reboot_helper
+	echo "pka_choice $pka_choice" >> $HOME/reboot_helper.txt 
+	echo "Okay, I'll go ahead and set that for you."
+fi
 
 echo $divider_line
 

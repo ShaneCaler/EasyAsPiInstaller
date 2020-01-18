@@ -1,16 +1,11 @@
 #!/bin/bash
 
+# Grab necessary variables from reboot_helper
+if [[ -f $HOME/reboot_helper.txt ]]; then
+	DIR="$(awk '/DIR/{print $NF}' $HOME/reboot_helper.txt)"
+fi
+
 before_reboot(){
-	echo "$divider_line"
-	echo -e "$t_important"IMPORTANT:"$t_reset As mentioned before, your device will reboot once this script finishes, 
-please make sure that you have 'autologin' set using the command 'sudo raspi-config'
-and navigating to 'boot options'. You can change it back after everything is done!"
-	read -rp "$(echo -e $t_readin"Would you like to exit to change this setting? Y for yes, N for no: "$t_reset)" -e -i "N" exit_choice
-	if [[ "${exit_choice^^}" == "Y" ]]; then
-		echo "Okay, just rerun the script and make your way back here!"
-		exit
-	fi
-	
 	echo "$divider_line"
 	
 	echo -e "$t_bold"NOTE:"$t_reset This will take a while, especially loading the kernel headers. 
@@ -50,8 +45,8 @@ after_reboot() {
 
 	sudo apt install wireguard -y
 	
-	echo "$divider_line"
-	echo "Alright, we're (hopefully) done! Once you're ready, I'll run the command 'sudo lsmod | grep wireguard' 
+	echo $divider_line
+	echo "Alright, we're (hopefully) done! Now I'll run the command \"sudo lsmod | grep wireguard\" 
 before and after rebooting to test if all went well. You should see some output on both along with an error/success message.
 Remember, if you're running this installer from SSH, you'll need to manually restart the script after reestablishing connection."
 	sleep 3
@@ -63,15 +58,16 @@ Remember, if you're running this installer from SSH, you'll need to manually res
 		echo "Looking good!"
 	else
 		echo ""
-		echo "Something went wrong and wireguard wasnt installed correctly, the command 'sudo lsmod | grep wireguard' "
-		echo "did not return succesful. I recommend scrolling up and checking if any part of the installation produced "
-		echo "error messages and try troubleshooting online or with the GitHub readme. Once you can get that command to produce"
-		echo "output, then you can continue with this installer. See you soon!"
-		sleep 15 # temporary
+		echo "It seems that the command \"sudo lsmod | grep wireguard\" did not return successful."
+		echo "Don't worry just yet, though, as this will likely be fixed after we reboot."
+		echo "I recommend using Shift+Page-up/Page-down to scroll up and check if any part of the installation produced "
+		echo "error messages and try troubleshooting online or with the GitHub readme. If there are no errors, just wait to see "
+		echo "if the command returns successful after rebooting (I will run it and display the results for you)."
+		echo $divider_line
+		echo "Sleeping for 10 seconds before rebooting..."
+		sleep 10 # temporary
 		#exit 1
 	fi
-
-	read -rp "$(echo -e $t_readin"Alright, ready to restart? Just press enter! "$t_reset)" -e -i "" move_fwd
 
 	# Reboot and check if wireguard loaded at boot
 	echo "Temporary reboot script" >> $DIR/wg_install_checkpoint2.txt

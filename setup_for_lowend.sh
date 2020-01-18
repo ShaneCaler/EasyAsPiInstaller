@@ -1,6 +1,11 @@
 #!/bin/bash
 # Install WireGuard for armhf devices
 
+# Grab necessary variables from reboot_helper
+if [[ -f $HOME/reboot_helper.txt ]]; then
+	DIR="$(awk '/DIR/{print $NF}' $HOME/reboot_helper.txt)"
+fi
+
 # Install everything needed for WireGuard
 echo ""
 sleep 3
@@ -16,7 +21,7 @@ the 'make' commands. So go grab a coffee and I will show a prompt for you once e
 
 	# Install the toolchain
 	sudo apt-get install libmnl-dev libelf-dev raspberrypi-kernel-headers build-essential pkg-config -y
-	echo "$divider_line"
+	echo $divider_line
 	sudo apt-get update -y && sudo apt-get upgrade -y
 	echo "Temporary reboot script" >> $DIR/wg_install_checkpoint1.txt
 	echo "Rebooting in 5 seconds..."
@@ -69,8 +74,7 @@ $divider_line"
 	echo "Alright, we're (hopefully) done! Once you're ready, I'll run the command 'sudo lsmod | grep wireguard' 
 before and after rebooting to test if all went well. You should see some output on both along with an error/success message.
 Remember, if you're running this installer from SSH, you'll need to manually restart the script after reestablishing connection.
-$divider_line
-	"
+$divider_line"
 	sleep 3
 	
 	# Check that wireguard is installed
@@ -80,15 +84,16 @@ $divider_line
 		echo "Looking good, the command returned succesful!"
 	else
 		echo ""
-		echo "It seems that the command 'sudo lsmod | grep wireguard' did not return successful."
+		echo "It seems that the command \"sudo lsmod | grep wireguard\" did not return successful."
 		echo "Don't worry just yet, though, as this will likely be fixed after we reboot."
 		echo "I recommend using Shift+Page-up/Page-down to scroll up and check if any part of the installation produced "
 		echo "error messages and try troubleshooting online or with the GitHub readme. If there are no errors, just wait to see "
 		echo "if the command returns successful after rebooting (I will run it and display the results for you)."
-		sleep 5
+		echo $divider_line
+		echo "Sleeping for 10 seconds before rebooting..."
+		sleep 10
 	fi
 
-	read -rp "$(echo -e $t_readin"Alright, ready to restart? Just press enter! "$t_reset)" -e -i "" move_fwd
 	echo "Temporary reboot script" >> $DIR/wg_install_checkpoint2.txt
 	
 	# Reboot

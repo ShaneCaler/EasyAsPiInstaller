@@ -43,13 +43,31 @@ divider_line="
 
 "	
 
-if [[ ! -f $DIR/EAPHelper.txt ]]; then
+if [[ ! -f $DIR/EAPHelper_checkpoint.txt ]]; then
 	. "$DIR/EAPHelper.sh"
 fi
 
-# Check if user wants pi-hole
+# Check if user wants pi-hole/if pi-hole was installed
 if [[ "${pihole_choice^^}" == "Y" && ! -f $DIR/pihole_checkpoint.txt ]]; then
 	. "$DIR/configure_pihole_unbound.sh" pihole
+elif [[ -f $DIR/pihole_checkpoint.txt ]]; then
+	echo "Alright, let's check to see if Pi-hole works by using the \"host\" command."
+	echo "First, I will run it against the server host using Pi-hole's DNS to verify that it is active,"
+	echo "And then I'll run it against 'pagead2.googlesyndication.com' to verify that ads are being served"
+	echo "By the Pi-hole. You should see the custom IP that you set earlier next to \"has address\""
+	if [[ "${ipv6_choice^^}" == "Y" ]]; then
+		echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[0]}"$t_reset
+		host $HOSTNAME ${int_addr[0]}
+		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
+		host pagead2.googlesyndication.com ${int_addr[0]}
+		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
+	else
+		echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[2]}"$t_reset
+		host $HOSTNAME ${int_addr[2]}
+		echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
+		host pagead2.googlesyndication.com ${int_addr[2]}
+		read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
+	fi
 fi
 
 # Call the corresponding wireguard setup script for the user's device
@@ -127,90 +145,66 @@ if [[ "${unbound_choice^^}" == "Y" && ! -f $DIR/unbound_checkpoint.txt ]]; then
 	. "$DIR/configure_pihole_unbound.sh" unbound
 fi
 
+if [[ -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
+	# Done, with pihole and unbound installed
+	echo "Done! Now I'll start Unbound and use the 'dig pi-hole.net @127.0.0.1 -p 5353'"
+	echo "command to check if it's working. I'll run this three times with different options. "
+	echo "For the first, the 'status' parameter should be equal to 'NOERROR'. This verifies that DNS is working."
+	echo "I'll wait for your input at the end so you can have time to review the results.
+	"
+	sleep 3
+	sudo service unbound start
+	# need timeout?
+	dig pi-hole.net @127.0.0.1 -p 5353
+	sleep 2
+	echo "
+	Now, this next test should show 'SERVFAIL' for the 'status' parameter."
+	echo "This verifies that DNSSEC is established, as we are running the dig command"
+	echo "against 'sigfail.verteiltesysteme.net' which replicates a website that has a failed signature."
+	echo "Note: This method of DNSSEC test validation is provided by: https://dnssec.vs.uni-due.de
+	"
+	sleep 3
+	dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5353
+	sleep 2
+	echo "
+	Finally, just to make sure that everything's working, we'll run dig against "
+	echo "the domain 'sigok.verteiltesysteme.net', which as you can guess should return"
+	echo "the status value of 'NOERROR'
+	"
+	sleep 3
+	dig sigok.verteiltesysteme.net @127.0.0.1 -p 5353
+	sleep 2
+	read -rp "Press enter whenever you are ready to move forward: " -e -i "" move_forward_choice
+	sleep 1
+	echo "Okay, there's one last thing you need to do before Unbound is good-to-go, and unfortunately,"
+	echo "you're on your own with this one! You'll need to open up a web browser on your phone or another device"
+	echo "and visit your Pi-hole admin dashboard that you created in the Pi-hole installation process."
+	echo "From what I can tell, it should be http://"${int_addr[0]}"/admin for IPv4,"
+	echo "or http://"${int_addr[2]}"/admin for IPv6, but if you changed it to something else then use that!"
+	echo "Once logged in, click the 'Settings' button on the left and then navigate to the 'DNS' tab on that page."
+	echo "You'll see two sections labeled 'Upstream DNS Servers', don't touch any of them other than the field that "
+	echo "is labeled 'Custom 1' for IPv4 users or both 'Custom 1' and 'Custom 3' for IPv6 users. In 'Custom 1', "
+	echo "Enter '127.0.0.1#5353' and if you're using IPv6 then also enter '::1#5353' into 'Custom 3'."
+	echo "Finally, underneath the box that you just edited there is a section labeled 'Interface Listening Behavior.'"
+	echo "Set this to only listen to the wireguard interface, in your case: $wg_intrfc"
+elif [[ ! -f $DIR/pihole_checkpoint.txt && ! -f $DIR/unbound_checkpoint.txt ]]; then
+	# Done, with no pihole or unbound
+	echo "Alright, that's it! If you want to install Pi-hole or Unbound later, just check the GitHub readme for a bunch"
+	echo "of guides and tips. Thank you and hope your installation went well!"
+elif [[ -f $DIR/pihole_checkpoint.txt && ! -f $DIR/unbound_checkpoint.txt ]]; then
+	echo "Alright, that's it! If you want to install Unbound later, just check the GitHub readme for a bunch"
+	echo "of guides and tips. You can also check the reboot_helper.txt file if you want to look over the values you've inputted."
+	echo "Thank you and I hope your installation went well!" 
+else	
+	echo "We're supposed to be finished, but it seems like something went wrong :("
+	# Done - not sure what happened here?
+fi
+
 # Remove reboot files
 cd $DIR
-rm $HOME/reboot_helper.txt wg_install_checkpoint1.txt wg_install_checkpoint2.txt wg_config_checkpoint.txt pihole_checkpoint.txt unbound_checkpoint.txt firewall_checkpoint_p1.txt firewall_checkpoint_p2.txt
+rm $HOME/reboot_helper.txt EAPHelper_checkpoint.txt wg_install_checkpoint1.txt wg_install_checkpoint2.txt wg_config_checkpoint.txt pihole_checkpoint.txt unbound_checkpoint.txt firewall_checkpoint_p1.txt firewall_checkpoint_p2.txt
 sudo sh -c "sed -i '/EasyAsPi.sh/d' /etc/profile"
 sudo sh -c "sed -i '/EasyAsPiInstaller/d' /etc/profile"
 
 # Add finish "checkpoint" to allow creating clients after the server is finished
 echo "#SERVERCOMPLETE" >> $DIR/EasyAsPi.sh
-
-after_wireguard_configuration(){	
-	# Check if pi-hole installed correctly
-	if [[ -f $DIR/pihole_checkpoint.txt ]]; then
-		echo "Alright, we've installed pi-hole! Let's check to see if it works by using the 'host' command."
-		echo "First, I will run it against the server host using Pi-hole's DNS to verify that it is active,"
-		echo "And then I'll run it against 'pagead2.googlesyndication.com' to verify that ads are being served"
-		echo "By the Pi-hole. You should see the custom IP that you set earlier next to 'has address'"
-		if [[ "${ipv6_choice^^}" == "Y" ]]; then
-			echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[0]}"$t_reset
-			host $HOSTNAME ${int_addr[0]}
-			echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[0]}"$t_reset
-			host pagead2.googlesyndication.com ${int_addr[0]}
-			read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
-		else
-			echo -e $t_bold"Running '# host $HOSTNAME ${int_addr[2]}"$t_reset
-			host $HOSTNAME ${int_addr[2]}
-			echo -e $t_bold"Running '# host pagead2.googlesyndication.com ${int_addr[2]}"$t_reset
-			host pagead2.googlesyndication.com ${int_addr[2]}
-			read -rp "I'll pause until you press enter so you can review" -e -i "" check_pi_install
-		fi
-	fi
-
-	if [[ -f $DIR/pihole_checkpoint.txt && -f $DIR/unbound_checkpoint.txt ]]; then
-		# Done, with pihole and unbound installed
-		echo "Done! Now I'll start Unbound and use the 'dig pi-hole.net @127.0.0.1 -p 5353'"
-		echo "command to check if it's working. I'll run this three times with different options. "
-		echo "For the first, the 'status' parameter should be equal to 'NOERROR'. This verifies that DNS is working."
-		echo "I'll wait for your input at the end so you can have time to review the results.
-		"
-		sleep 3
-		sudo service unbound start
-		# need timeout?
-		dig pi-hole.net @127.0.0.1 -p 5353
-		sleep 2
-		echo "
-		Now, this next test should show 'SERVFAIL' for the 'status' parameter."
-		echo "This verifies that DNSSEC is established, as we are running the dig command"
-		echo "against 'sigfail.verteiltesysteme.net' which replicates a website that has a failed signature."
-		echo "Note: This method of DNSSEC test validation is provided by: https://dnssec.vs.uni-due.de
-		"
-		sleep 3
-		dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5353
-		sleep 2
-		echo "
-		Finally, just to make sure that everything's working, we'll run dig against "
-		echo "the domain 'sigok.verteiltesysteme.net', which as you can guess should return"
-		echo "the status value of 'NOERROR'
-		"
-		sleep 3
-		dig sigok.verteiltesysteme.net @127.0.0.1 -p 5353
-		sleep 2
-		read -rp "Press enter whenever you are ready to move forward: " -e -i "" move_forward_choice
-		sleep 1
-		echo "Okay, there's one last thing you need to do before Unbound is good-to-go, and unfortunately,"
-		echo "you're on your own with this one! You'll need to open up a web browser on your phone or another device"
-		echo "and visit your Pi-hole admin dashboard that you created in the Pi-hole installation process."
-		echo "From what I can tell, it should be http://"${int_addr[0]}"/admin for IPv4,"
-		echo "or http://"${int_addr[2]}"/admin for IPv6, but if you changed it to something else then use that!"
-		echo "Once logged in, click the 'Settings' button on the left and then navigate to the 'DNS' tab on that page."
-		echo "You'll see two sections labeled 'Upstream DNS Servers', don't touch any of them other than the field that "
-		echo "is labeled 'Custom 1' for IPv4 users or both 'Custom 1' and 'Custom 3' for IPv6 users. In 'Custom 1', "
-		echo "Enter '127.0.0.1#5353' and if you're using IPv6 then also enter '::1#5353' into 'Custom 3'."
-		echo "Finally, underneath the box that you just edited there is a section labeled 'Interface Listening Behavior.'"
-		echo "Set this to only listen to the wireguard interface, in your case: $wg_intrfc"
-	elif [[ ! -f $DIR/pihole_checkpoint.txt && ! -f $DIR/unbound_checkpoint.txt ]]; then
-		# Done, with no pihole or unbound
-		echo "Alright, that's it! If you want to install Pi-hole or Unbound later, just check the GitHub readme for a bunch"
-		echo "of guides and tips. Thank you and hope your installation went well!"
-	elif [[ -f $DIR/pihole_checkpoint.txt && ! -f $DIR/unbound_checkpoint.txt ]]; then
-		echo "Alright, that's it! If you want to install Unbound later, just check the GitHub readme for a bunch"
-		echo "of guides and tips. You can also check the reboot_helper.txt file if you want to look over the values you've inputted."
-		echo "Thank you and I hope your installation went well!" 
-	else	
-		echo "We're supposed to be finished, but it seems like something went wrong :("
-		# Done - not sure what happened here?
-	fi
-} # End after_wireguard_configuration
-
